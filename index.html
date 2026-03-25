@@ -108,7 +108,7 @@
 
     <!-- DEBUG PANEL -->
     <!-- DEBUG PANEL -->
-    <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto;">
+    <div id="debugPanel" style="display: none; position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto;">
         <div>🛰️ SATELLITE DEBUG LOG</div>
         <div id="debugLog" style="margin-top: 10px; line-height: 1.4;"></div>
     </div>
@@ -119,5 +119,30 @@
 
     <!-- Game Scripts -->
     <script type="module" src="src/main.js"></script>
+    <div id="tutorialOverlay" style="
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    z-index: 2000;
+">
+
+    <div id="tutorialBox" style="
+        position: absolute;
+        bottom: 50px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #111;
+        color: #fff;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 400px;
+        text-align: center;
+        font-size: 14px;
+    ">
+        <p id="tutorialText">Tutorial text</p>
+        <button id="tutorialNext">Next</button>
+    </div>
+</div>
 </body>
 </html>

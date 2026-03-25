@@ -1,3 +1,4 @@
+
 console.log('🚀 main.js module loading...');
 
 // ==================== DEBUG LOGGING FUNCTION ====================
@@ -68,47 +69,38 @@ import { initDebris, updateDebris, getDebrisCount, clearAllDebris } from './debr
 import { initParticles, createExplosion, createSpark, updateParticles } from './particles.js';
 import { initAudio, playAlarm, playSuccess, playCollision, playWarning } from './sound.js';
 import { initScoreboard, addScore, getScoreboardHTML } from './scoreboard.js';
-
+import { startTutorial, isTutorialActive, updateTutorial , forceNextStep } from './tutorial.js';
 // ==================== INITIALIZATION ====================
 function init() {
     console.log('🛰️ Initializing Keep the Satellite Alive...');
     console.log('📍 DOMContentLoaded fired, starting initialization...');
 
-    // Initialize Three.js scene
-    console.log('📍 Calling initScene()...');
     initScene();
     const scene = getScene();
-    console.log('📍 Scene retrieved:', scene ? '✅ EXISTS' : '❌ NULL');
 
-    // Initialize all game systems
-    console.log('📍 Initializing debris system...');
     initDebris(scene);
-    console.log('📍 Initializing particles...');
     initParticles(scene);
-    console.log('📍 Initializing audio...');
     initAudio();
-    console.log('📍 Initializing scoreboard...');
     initScoreboard();
 
-    // Setup UI event listeners
-    console.log('📍 Setting up UI listeners...');
     setupUIListeners(gameState);
-
-    // Update initial UI
-    console.log('📍 Updating initial UI...');
     updateUI(gameState);
 
     console.log('✅ INITIALIZATION COMPLETE - GameLoop starting');
     console.log('Current game state:', gameState);
 
-    // Start game loop
+    startTutorial();
+    document.getElementById('tutorialNext').addEventListener('click', forceNextStep);
+
     gameLoop();
 }
 
 // ==================== GAME LOOP ====================
+
 let gameLoopCount = 0;
 function gameLoop() {
     requestAnimationFrame(gameLoop);
+    updateTutorial();
     gameLoopCount++;
 
     // Log every 60 frames (~1 second at 60fps)
@@ -116,7 +108,7 @@ function gameLoop() {
         console.log(`🔄 GameLoop frame ${gameLoopCount}, gameOver: ${gameState.gameOver}, battery: ${gameState.battery.toFixed(1)}%`);
     }
 
-    if (!gameState.gameOver) {
+    if (!gameState.gameOver && !isTutorialActive()) {
         // Update satellite position and check eclipse
         const eclipseInfo = checkEclipse();
         const wasInSunlight = gameState.isInSunlight;
@@ -279,13 +271,18 @@ function restartGame() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Toggle debug panel with L key
+let debugVisible = false;
+
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'l') {
+        debugVisible = !debugVisible;
+
         const debugPanel = document.getElementById('debugPanel');
         if (debugPanel) {
-            debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
-            console.log(`📝 Debug panel ${debugPanel.style.display === 'none' ? 'hidden' : 'shown'}`);
+            debugPanel.style.display = debugVisible ? 'block' : 'none';
         }
+
+        console.log(`📝 Debug panel ${debugVisible ? 'shown' : 'hidden'}`);
     }
 });
 

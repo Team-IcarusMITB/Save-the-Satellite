@@ -147,6 +147,7 @@ function createEarth() {
         undefined,
         () => console.error('❌ Error loading specular map')
     );
+    
     const bumpTexture = loader.load(
         "./public/textures/01_earthbump1k.jpg",
         () => console.log('✅ Bump map loaded'),
@@ -154,12 +155,9 @@ function createEarth() {
         () => console.error('❌ Error loading bump map')
     );
 
-    const material = new THREE.MeshPhongMaterial({
-        map: mapTexture,
-        specularMap: specTexture,
-        bumpMap: bumpTexture,
-        bumpScale: 0.04,
-    });
+    const material = new THREE.MeshStandardMaterial({
+    map: mapTexture
+});
     earthMesh = new THREE.Mesh(geometry, material);
     earthMesh.castShadow = true;
     earthMesh.receiveShadow = true;
@@ -200,6 +198,7 @@ function createEarth() {
         opacity: 0.8,
         blending: THREE.AdditiveBlending,
         alphaMap: cloudsAlphaTexture,
+        depthWrite: false,
     });
     cloudsMesh = new THREE.Mesh(geometry, cloudsMat);
     cloudsMesh.scale.setScalar(1.003);
@@ -317,33 +316,23 @@ function createMoon() {
         () => console.log('📝 Moon map not found (using default gray)')
     );
 
-    loader.load(
-        "./public/textures/07_moonbump4k.jpg",
-        (texture) => {
-            moonMaterial.bumpMap = texture;
-            moonMaterial.bumpScale = 2;
-            moonMaterial.needsUpdate = true;
-            console.log('✅ Moon bump map loaded');
-        },
-        undefined,
-        () => console.log('📝 Moon bump map not found')
-    );
-
     console.log('✅ Moon created');
 }
 
 // ==================== CREATE SATELLITE ====================
+const textureLoader = new THREE.TextureLoader();
+
 function createSatellite() {
     // Create a satellite group
     const satGroup = new THREE.Group();
 
     // Main body (central cube) - using MeshStandardMaterial for metalness/roughness support
     const bodyGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.4);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x333333,
-        metalness: 0.8,
-        roughness: 0.2
-    });
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: 0x888888,
+    metalness: 1.0,
+    roughness: 0.3
+});
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.castShadow = true;
     body.receiveShadow = true;
@@ -351,11 +340,14 @@ function createSatellite() {
 
     // Solar panels (left)
     const panelGeometry = new THREE.BoxGeometry(0.15, 0.35, 0.05);
-    const panelMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x1a1a4d,
-        emissive: 0x0a0a3d,
-        shininess: 100
-    });
+
+    const panelMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0a1a5f,
+    emissive: 0x112244,
+    emissiveIntensity: 0.5,
+    metalness: 0.6,
+    roughness: 0.3
+});
     const leftPanel = new THREE.Mesh(panelGeometry, panelMaterial);
     leftPanel.position.x = -0.25;
     leftPanel.castShadow = true;
@@ -382,6 +374,17 @@ function createSatellite() {
     satGroup.add(antenna);
 
     satellite = satGroup;
+    const lightMaterial = new THREE.MeshStandardMaterial({
+    color: 0x00ffff,
+    emissive: 0x00ffff,
+    emissiveIntensity: 2
+});
+
+const lightGeo = new THREE.SphereGeometry(0.03, 8, 8);
+const statusLight = new THREE.Mesh(lightGeo, lightMaterial);
+
+statusLight.position.set(0, 0.2, 0.2);
+satGroup.add(statusLight);
     scene.add(satellite);
 
     // Set initial position
@@ -455,8 +458,12 @@ function setupManeuverControls() {
     window.addEventListener('keydown', (event) => {
         const key = event.key.toLowerCase();
         if (key === 'w' || key === 'arrowup') {
-            satelliteOffset.z -= SATELLITE_MANEUVER_SPEED;
+    satelliteOffset.z -= SATELLITE_MANEUVER_SPEED;
+
+        if (window.tutorialState) {
+            window.tutorialState.moved = true;
         }
+    }
         if (key === 's' || key === 'arrowdown') {
             satelliteOffset.z += SATELLITE_MANEUVER_SPEED;
         }

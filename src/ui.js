@@ -158,10 +158,14 @@ function updateDebrisCounter(count) {
 // ==================== SETUP UI LISTENERS ====================
 export function setupUIListeners(gameState) {
     // Communications toggle
-    document.getElementById('commToggle').addEventListener('click', () => {
-        gameState.systems.comms = !gameState.systems.comms;
-        console.log(`Communications: ${gameState.systems.comms ? 'ON' : 'OFF'}`);
-    });
+   document.getElementById('commToggle').addEventListener('click', () => {
+    gameState.systems.comms = !gameState.systems.comms;
+
+    // 🔥 ADD THIS
+    if (window.tutorialState) {
+        window.tutorialState.commsUsed = true;
+    }
+});
 
     // Payload toggle
     document.getElementById('payloadToggle').addEventListener('click', () => {
