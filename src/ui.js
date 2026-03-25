@@ -1,40 +1,21 @@
-console.log('📍 ui.js module loading...');
+import { startRandomMinigame } from './minigames.js';
+import { createExplosion } from './particles.js';
+import { getSatellitePosition } from './scene.js';
 
-// ==================== UI MODULE ====================
-
-// ==================== UPDATE UI ====================
 export function updateUI(gameState) {
-    // Update battery bar
     updateBatteryDisplay(gameState.battery);
-
-    // Update status indicator (sunlight/eclipse)
     updateStatusIndicator(gameState.isInSunlight);
-
-    // Update survival time
     updateSurvivalTime(gameState.survivalTime);
-
-    // Update system button states
     updateSystemButtons(gameState.systems);
-
-    // Update fault display
     updateFaultDisplay(gameState.faults);
-
-    // Update debris counter
     updateDebrisCounter(gameState.debris.count);
 }
 
-// ==================== UPDATE BATTERY DISPLAY ====================
 function updateBatteryDisplay(battery) {
     const batteryPercent = document.getElementById('batteryPercent');
     const batteryBar = document.getElementById('batteryBar');
-
-    // Update percentage text
     batteryPercent.textContent = Math.round(battery) + '%';
-
-    // Update bar width
     batteryBar.style.width = battery + '%';
-
-    // Update bar color based on battery level
     if (battery > 50) {
         batteryBar.classList.remove('warning', 'critical');
     } else if (battery > 20) {
@@ -45,48 +26,41 @@ function updateBatteryDisplay(battery) {
     }
 }
 
-// ==================== UPDATE STATUS INDICATOR ====================
 function updateStatusIndicator(isInSunlight) {
     const statusIndicator = document.getElementById('statusIndicator');
-
     if (isInSunlight) {
-        statusIndicator.textContent = '☀️ Sunlit (solar exposure)';
+        statusIndicator.textContent = 'Sunlit (solar exposure)';
         statusIndicator.classList.remove('eclipse');
         statusIndicator.classList.add('sunlight');
     } else {
-        statusIndicator.textContent = '🌘 Earth Shadow (solar blocked)';
+        statusIndicator.textContent = 'Earth Shadow (solar blocked)';
         statusIndicator.classList.remove('sunlight');
         statusIndicator.classList.add('eclipse');
     }
 }
 
-// ==================== UPDATE SURVIVAL TIME ====================
 function updateSurvivalTime(survivalTime) {
     const survivalTimeElement = document.getElementById('survivalTime');
     survivalTimeElement.textContent = survivalTime + 's';
 }
 
-// ==================== UPDATE SYSTEM BUTTONS ====================
 function updateSystemButtons(systems) {
     const commToggle = document.getElementById('commToggle');
     const payloadToggle = document.getElementById('payloadToggle');
     const cameraToggle = document.getElementById('cameraToggle');
 
-    // Update communications button
     if (systems.comms) {
         commToggle.classList.add('active');
     } else {
         commToggle.classList.remove('active');
     }
 
-    // Update payload button
     if (systems.payload) {
         payloadToggle.classList.add('active');
     } else {
         payloadToggle.classList.remove('active');
     }
 
-    // Update camera button
     if (systems.camera) {
         cameraToggle.classList.add('active');
     } else {
@@ -94,18 +68,15 @@ function updateSystemButtons(systems) {
     }
 }
 
-// ==================== UPDATE FAULT DISPLAY ====================
 function updateFaultDisplay(faults) {
     const faultAlert = document.getElementById('faultAlert');
     const faultText = document.getElementById('faultText');
     const restartButton = document.getElementById('restartButton');
 
     if (faults.current) {
-        // Show fault
         faultAlert.classList.remove('hidden');
         faultAlert.classList.add('active');
         
-        // Calculate time remaining
         let timeRemaining = 'N/A';
         if (faults.timer) {
             const elapsed = Date.now() - faults.timer;
@@ -113,20 +84,17 @@ function updateFaultDisplay(faults) {
             timeRemaining = (remaining / 1000).toFixed(1);
         }
         
-        faultText.textContent = `⚠️ ${faults.current} - Fix in: ${timeRemaining}s`;
+        faultText.textContent = `FAULT: ${faults.current} | Fix in: ${timeRemaining}s`;
         restartButton.classList.remove('hidden');
     } else {
-        // No active fault
         faultAlert.classList.add('hidden');
         faultAlert.classList.remove('active');
-        faultText.textContent = '✅ All Systems Nominal';
+        faultText.textContent = 'All Systems Nominal';
         restartButton.classList.add('hidden');
     }
 }
 
-// ==================== UPDATE DEBRIS COUNTER ====================
 function updateDebrisCounter(count) {
-    // Create element if it doesn't exist
     let debrisDisplay = document.getElementById('debrisCounter');
     if (!debrisDisplay) {
         debrisDisplay = document.createElement('div');
@@ -147,7 +115,7 @@ function updateDebrisCounter(count) {
     }
     
     if (count > 0) {
-        debrisDisplay.innerHTML = `<strong>⚠️ ${count} Debris Pieces</strong><br><span style="font-size: 12px; color: #ffaa00;">Avoid collision!</span>`;
+        debrisDisplay.innerHTML = `<strong>${count} Debris Pieces</strong><br><span style="font-size: 12px; color: #ffaa00;">Avoid collision!</span>`;
         debrisDisplay.style.borderColor = 'rgba(255, 170, 0, 0.6)';
     } else {
         debrisDisplay.innerHTML = '<span style="color: #888;">No debris detected</span>';
@@ -155,31 +123,33 @@ function updateDebrisCounter(count) {
     }
 }
 
-// ==================== SETUP UI LISTENERS ====================
 export function setupUIListeners(gameState) {
-    // Communications toggle
     document.getElementById('commToggle').addEventListener('click', () => {
         gameState.systems.comms = !gameState.systems.comms;
-        console.log(`Communications: ${gameState.systems.comms ? 'ON' : 'OFF'}`);
     });
 
-    // Payload toggle
     document.getElementById('payloadToggle').addEventListener('click', () => {
         gameState.systems.payload = !gameState.systems.payload;
-        console.log(`Payload: ${gameState.systems.payload ? 'ON' : 'OFF'}`);
     });
 
-    // Camera toggle
     document.getElementById('cameraToggle').addEventListener('click', () => {
         gameState.systems.camera = !gameState.systems.camera;
-        console.log(`Camera: ${gameState.systems.camera ? 'ON' : 'OFF'}`);
     });
 
-    // Restart system button
     document.getElementById('restartButton').addEventListener('click', () => {
-        gameState.faults.current = null;
-        console.log('System restarted');
+        startRandomMinigame(
+            () => {
+                gameState.faults.current = null;
+                gameState.faults.timer = null;
+                document.getElementById('faultAlert').classList.add('hidden');
+            },
+            () => {
+                gameState.battery = 0; 
+                const pos = getSatellitePosition();
+                if (pos) {
+                    createExplosion(pos, 0xff0000, 100);
+                }
+            }
+        );
     });
-
-    console.log('✅ UI listeners setup complete');
 }
