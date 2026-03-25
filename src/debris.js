@@ -1,122 +1,167 @@
-// ==================== DEBRIS SYSTEM ====================
-import { getSatellitePosition } from './scene.js';
+import { getSatellitePosition, ORBIT_SPEED, currentOrbitRadius } from './scene.js';
 
 const DEBRIS_SIZE = 0.15;
-const DEBRIS_SPEED = 0.08;
-const DEBRIS_SPAWN_DISTANCE = 15;
+const DEBRIS_SPAWN_DISTANCE = 25;
 const COLLISION_DISTANCE = 0.8;
-const DEBRIS_PROBABILITY = 0.0008; // ~0.08% chance per frame = debris every ~2 seconds
 
 let debrisArray = [];
 let scene;
 let debrisMeshes = [];
+let lastSpawnTime = 0;
 
-// ==================== INITIALIZE DEBRIS SYSTEM ====================
 export function initDebris(sceneRef) {
     scene = sceneRef;
-    console.log('✅ Debris system initialized');
 }
 
-// ==================== GENERATE DEBRIS ====================
-function generateDebris() {
-    // Random position on a sphere around Earth
+function generateDebris(type) {
     const angle1 = Math.random() * Math.PI * 2;
     const angle2 = Math.random() * Math.PI * 2;
-    
     const x = DEBRIS_SPAWN_DISTANCE * Math.cos(angle1) * Math.sin(angle2);
     const y = DEBRIS_SPAWN_DISTANCE * Math.sin(angle1) * Math.sin(angle2);
     const z = DEBRIS_SPAWN_DISTANCE * Math.cos(angle2);
+    const startPos = new THREE.Vector3(x, y, z);
 
-    // Create debris mesh
-    const debrisGeometry = new THREE.IcosahedronGeometry(DEBRIS_SIZE, 2);
+    const debrisGeometry = new THREE.IcosahedronGeometry(DEBRIS_SIZE, 0);
+    const pos = debrisGeometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+        pos.setXYZ(
+            i,
+            pos.getX(i) * (0.85 + Math.random() * 0.3),
+            pos.getY(i) * (0.85 + Math.random() * 0.3),
+            pos.getZ(i) * (0.85 + Math.random() * 0.3)
+        );
+    }
+    pos.needsUpdate = true;
+    debrisGeometry.computeVertexNormals();
+
     const debrisMaterial = new THREE.MeshPhongMaterial({
-        color: 0x888888,
-        emissive: 0x444444,
-        shininess: 50
+        color: 0xcc3300,
+        emissive: 0x441100,
+        flatShading: true
     });
     const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterial);
     debrisMesh.position.set(x, y, z);
-    debrisMesh.castShadow = true;
-    debrisMesh.receiveShadow = true;
-
     scene.add(debrisMesh);
 
-    const satellitePosition = getSatellitePosition();
-    let target;
-    if (satellitePosition) {
-        target = satellitePosition;
-    } else {
-        target = new THREE.Vector3(0, 0, 0);
-    }
+    const lineMat = new THREE.LineBasicMaterial({
+        color: 0xff4400,
+        transparent: true,
+        opacity: 0.4
+    });
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)
+    ]);
+    const trajectoryLine = new THREE.Line(lineGeo, lineMat);
+    scene.add(trajectoryLine);
 
-    const directionToSat = target.clone().sub(new THREE.Vector3(x, y, z)).normalize();
-    // Add a small random spread to allow player avoidance 
-    directionToSat.add(new THREE.Vector3((Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08)).normalize();
+    let dir;
+    const speed = 0.045 + Math.random() * 0.035;
+    const satPos = getSatellitePosition() || new THREE.Vector3(0, 0, 0);
+
+    if (type === 1) {
+        const offset = new THREE.Vector3((Math.random()-0.5)*4, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
+        dir = satPos.clone().add(offset).sub(startPos).normalize();
+    } else if (type === 2) {
+        dir = satPos.clone().sub(startPos).normalize();
+    } else if (type === 3) {
+        const dist = startPos.distanceTo(satPos);
+        const framesToReach = dist / speed;
+        const currentAngle = Math.atan2(satPos.z, satPos.x);
+        const predictedAngle = currentAngle + (ORBIT_SPEED * framesToReach);
+        const futureX = currentOrbitRadius * Math.cos(predictedAngle);
+        const futureZ = currentOrbitRadius * Math.sin(predictedAngle);
+        const futurePos = new THREE.Vector3(futureX, satPos.y, futureZ);
+        dir = futurePos.sub(startPos).normalize();
+    }
 
     const debris = {
         mesh: debrisMesh,
-        position: new THREE.Vector3(x, y, z),
-        velocity: directionToSat.multiplyScalar(DEBRIS_SPEED),
+        line: trajectoryLine,
+        position: startPos,
+        velocity: dir.multiplyScalar(speed),
         rotationVelocity: new THREE.Vector3(
-            (Math.random() - 0.5) * 0.1,
-            (Math.random() - 0.5) * 0.1,
-            (Math.random() - 0.5) * 0.1
+            (Math.random() - 0.5) * 0.04,
+            (Math.random() - 0.5) * 0.04,
+            (Math.random() - 0.5) * 0.04
         ),
         age: 0,
-        maxAge: 30000 // 30 seconds
+        maxAge: 60000,
+        type: type,
+        homingTimer: type === 2 ? 300 : 0
     };
 
     debrisArray.push(debris);
     debrisMeshes.push(debrisMesh);
-    console.log(`⚠️ Debris spawned! Total: ${debrisArray.length}`);
     return debris;
 }
 
-// ==================== UPDATE DEBRIS ====================
+export function setDebrisLinesVisibility(isVisible) {
+    debrisArray.forEach(d => {
+        if (d.line) d.line.visible = isVisible;
+    });
+}
+
 export function updateDebris(gameState) {
-    // Randomly spawn new debris
-    if (Math.random() < DEBRIS_PROBABILITY && !gameState.gameOver) {
-        generateDebris();
+    const now = Date.now();
+    const spawnInterval = Math.max(10000, 40000 - (gameState.survivalTime * 500));
+    
+    if (now - lastSpawnTime > spawnInterval && !gameState.gameOver) {
+        const count = 2 + Math.floor(gameState.survivalTime / 60);
+        for(let i=0; i<count; i++) {
+            const rand = Math.random();
+            let type = 1;
+            if(rand > 0.4 && rand <= 0.7) type = 2;
+            else if(rand > 0.7) type = 3;
+            generateDebris(type);
+        }
+        lastSpawnTime = now;
     }
 
-    // Update existing debris
     const satPos = getSatellitePosition();
     if (!satPos) return;
 
     for (let i = debrisArray.length - 1; i >= 0; i--) {
         const debris = debrisArray[i];
-        
-        // Homing behavior: steer debris toward moving satellite
-        const targetPos = getSatellitePosition();
-        if (targetPos) {
-            const desiredDir = targetPos.clone().sub(debris.position).normalize().multiplyScalar(DEBRIS_SPEED);
-            debris.velocity.lerp(desiredDir, 0.02); // slight steering toward sat
+
+        if (debris.type === 2 && debris.homingTimer > 0) {
+            debris.homingTimer--;
+            const targetPos = getSatellitePosition();
+            if (targetPos) {
+                const currentSpeed = debris.velocity.length();
+                const desired = targetPos.clone().sub(debris.position).normalize().multiplyScalar(currentSpeed);
+                debris.velocity.lerp(desired, 0.03);
+            }
         }
 
-        // Update position
         debris.position.add(debris.velocity);
         debris.mesh.position.copy(debris.position);
 
-        // Rotate debris
         debris.mesh.rotation.x += debris.rotationVelocity.x;
         debris.mesh.rotation.y += debris.rotationVelocity.y;
         debris.mesh.rotation.z += debris.rotationVelocity.z;
 
-        // Age debris
-        debris.age += 16.67; // ~60fps
+        const dirNormal = debris.velocity.clone().normalize();
+        const futurePos = debris.position.clone().add(dirNormal.clone().multiplyScalar(100));
+        const pastPos = debris.position.clone().sub(dirNormal.clone().multiplyScalar(100));
+        debris.line.geometry.setFromPoints([pastPos, futurePos]);
 
-        // Check collision with satellite
-        const distance = debris.position.distanceTo(satPos);
-        if (distance < COLLISION_DISTANCE) {
-            // Collision detected!
-            gameState.debris.hits = (gameState.debris.hits || 0) + 1;
-            console.log(`💥 COLLISION! Total hits: ${gameState.debris.hits}`);
+        debris.age += 16.67;
+
+        if (debris.position.length() < 1.1) {
+            gameState.debris.avoided++;
             removeDebris(i);
             continue;
         }
 
-        // Remove if too far or too old
-        if (debris.position.length() > 20 || debris.age > debris.maxAge) {
+        const distance = debris.position.distanceTo(satPos);
+        if (distance < COLLISION_DISTANCE) {
+            gameState.debris.hits = (gameState.debris.hits || 0) + 1;
+            removeDebris(i);
+            continue;
+        }
+
+        if (debris.position.length() > 30 || debris.age > debris.maxAge) {
+            gameState.debris.avoided++;
             removeDebris(i);
         }
     }
@@ -124,31 +169,29 @@ export function updateDebris(gameState) {
     return debrisArray;
 }
 
-// ==================== REMOVE DEBRIS ====================
 function removeDebris(index) {
     const debris = debrisArray[index];
-    if (debris && debris.mesh) {
-        scene.remove(debris.mesh);
+    if (debris) {
+        if (debris.mesh) scene.remove(debris.mesh);
+        if (debris.line) {
+            debris.line.geometry.dispose();
+            debris.line.material.dispose();
+            scene.remove(debris.line);
+        }
     }
     debrisArray.splice(index, 1);
     debrisMeshes.splice(index, 1);
 }
 
-// ==================== GET DEBRIS COUNT ====================
-export function getDebrisCount() {
-    return debrisArray.length;
-}
+export function getDebrisCount() { return debrisArray.length; }
 
-// ==================== CLEAR ALL DEBRIS ====================
 export function clearAllDebris() {
-    debrisArray.forEach(debris => {
-        if (debris.mesh) scene.remove(debris.mesh);
+    debrisArray.forEach(d => {
+        if (d.mesh) scene.remove(d.mesh);
+        if (d.line) { d.line.geometry.dispose(); d.line.material.dispose(); scene.remove(d.line); }
     });
     debrisArray = [];
     debrisMeshes = [];
 }
 
-// ==================== GET DEBRIS ARRAY ====================
-export function getDebrisArray() {
-    return debrisArray;
-}
+export function getDebrisArray() { return debrisArray; }
