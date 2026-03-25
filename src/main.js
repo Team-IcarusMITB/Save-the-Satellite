@@ -1,295 +1,253 @@
-console.log('🚀 main.js module loading...');
+import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition, getOrbitAngle, currentOrbitRadius, setOrbitPathVisibility } from './scene.js';
+import { updateUI, setupUIListeners } from './ui.js';
+import { updateBattery, checkEclipse, getPowerFlowRate } from './systems.js';
+import { updateFaults } from './faults.js';
+import { initDebris, updateDebris, getDebrisCount, clearAllDebris, getDebrisArray, setDebrisLinesVisibility } from './debris.js';
+import { initParticles, createExplosion, createSpark, updateParticles } from './particles.js';
+import { initAudio, playAlarm, playSuccess, playCollision, playWarning } from './sound.js';
+import { initScoreboard, addScore, getScoreboardHTML } from './scoreboard.js';
+import { openMinigame, closeMinigame, updateMinigameTimer } from './minigames.js';
 
-// ==================== DEBUG LOGGING FUNCTION ====================
 const originalLog = console.log;
-
 window.debugLog = function(message) {
-    // Use original console.log, NOT the intercepted one
     originalLog.apply(console, [message]);
-    const debugPanel = document.getElementById('debugLog');
-    if (debugPanel) {
+    const panel = document.getElementById('debugLog');
+    if (panel) {
         const line = document.createElement('div');
         line.textContent = message;
-        debugPanel.appendChild(line);
-        // Keep only last 20 lines
-        while (debugPanel.children.length > 20) {
-            debugPanel.removeChild(debugPanel.firstChild);
-        }
-        // Auto-scroll to bottom
-        debugPanel.parentElement.scrollTop = debugPanel.parentElement.scrollHeight;
+        panel.appendChild(line);
+        while (panel.children.length > 30) panel.removeChild(panel.firstChild);
+        panel.parentElement.scrollTop = panel.parentElement.scrollHeight;
     }
 };
-
-// Intercept console.log to also show in debug panel
 console.log = function(...args) {
     originalLog.apply(console, args);
     window.debugLog(args.join(' '));
 };
 
-// Log that debug listener is active
-window.debugLog('📍 Debug panel initialized');
-
-// ==================== GAME STATE ====================
 const gameState = {
     battery: 100,
     isInSunlight: true,
-    systems: {
-        comms: false,
-        payload: false,
-        camera: false
-    },
-    faults: {
-        current: null,
-        count: 0,
-        timer: null, // Time until system fails automatically
-        maxTime: 30000 // 30 seconds to fix a fault before failure
-    },
-    debris: {
-        count: 0,
-        hits: 0,        // Collisions this frame
-        totalHits: 0    // Cumulative collision count for game-over
-    },
+    systems: { comms: true, payload: true, camera: true },
+    faults: { current: null, severity: 'warning', count: 0, fixedCount: 0, timer: null, maxTime: 20000, lockedSystems: [], savedSystems: {}, noCharge: false },
+    debris: { count: 0, hits: 0, avoided: 0, items: [] },
+    score: 0,
+    money: 0,
+    scoreMultiplier: 1,
     gameOver: false,
     startTime: Date.now(),
-    survivalTime: 0
+    survivalTime: 0,
+    minigameActive: false,
+    orbitRadius: 3.5,
+    isThrusting: false
 };
 
-// ==================== DEBUG INFO ====================
-console.log('=== SATELLITE GAME DEBUGGING ===');
-console.log('THREE.js version:', typeof THREE !== 'undefined' ? 'LOADED' : 'NOT FOUND');
-console.log('Initial game state:', gameState);
+window.gameState = gameState;
 
-// ==================== IMPORTS ====================
-import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition } from './scene.js';
-import { updateUI, setupUIListeners } from './ui.js';
-import { updateBattery, checkEclipse, calculateDrain } from './systems.js';
-import { updateFaults, generateRandomFault } from './faults.js';
-import { initDebris, updateDebris, getDebrisCount, clearAllDebris } from './debris.js';
-import { initParticles, createExplosion, createSpark, updateParticles } from './particles.js';
-import { initAudio, playAlarm, playSuccess, playCollision, playWarning } from './sound.js';
-import { initScoreboard, addScore, getScoreboardHTML } from './scoreboard.js';
-
-// ==================== INITIALIZATION ====================
 function init() {
-    console.log('🛰️ Initializing Keep the Satellite Alive...');
-    console.log('📍 DOMContentLoaded fired, starting initialization...');
-
-    // Initialize Three.js scene
-    console.log('📍 Calling initScene()...');
     initScene();
     const scene = getScene();
-    console.log('📍 Scene retrieved:', scene ? '✅ EXISTS' : '❌ NULL');
-
-    // Initialize all game systems
-    console.log('📍 Initializing debris system...');
     initDebris(scene);
-    console.log('📍 Initializing particles...');
     initParticles(scene);
-    console.log('📍 Initializing audio...');
     initAudio();
-    console.log('📍 Initializing scoreboard...');
     initScoreboard();
-
-    // Setup UI event listeners
-    console.log('📍 Setting up UI listeners...');
     setupUIListeners(gameState);
-
-    // Update initial UI
-    console.log('📍 Updating initial UI...');
     updateUI(gameState);
 
-    console.log('✅ INITIALIZATION COMPLETE - GameLoop starting');
-    console.log('Current game state:', gameState);
+    const debugPanel = document.getElementById('debugPanel');
+    if (debugPanel) debugPanel.style.display = 'none';
 
-    // Start game loop
+    document.getElementById('fixFaultButton').addEventListener('click', () => {
+        if (!gameState.minigameActive && gameState.faults.current) {
+            gameState.minigameActive = true;
+            openMinigame(
+                () => {
+                    // Restore systems that were active before the fault
+                    if (gameState.faults.savedSystems) {
+                        gameState.faults.lockedSystems.forEach(sys => {
+                            if (sys !== 'movement' && gameState.faults.savedSystems[sys]) {
+                                gameState.systems[sys] = true;
+                            }
+                        });
+                    }
+
+                    gameState.faults.current = null;
+                    gameState.faults.timer = null;
+                    gameState.faults.severity = 'warning';
+                    gameState.faults.lockedSystems = [];
+                    gameState.faults.noCharge = false;
+                    gameState.faults.fixedCount++;
+                    gameState.minigameActive = false;
+                    closeMinigame();
+                    playSuccess();
+                },
+                () => {
+                    gameState.minigameActive = false;
+                    closeMinigame();
+                    endGame('SYSTEM OVERLOAD FAILED REPAIR');
+                }
+            );
+        }
+    });
+
     gameLoop();
 }
 
-// ==================== GAME LOOP ====================
-let gameLoopCount = 0;
+function updateScore() {
+    const activeSystems = Object.values(gameState.systems).filter(Boolean).length;
+    gameState.scoreMultiplier = 1.0 + activeSystems * 0.5;
+    if (!gameState.isInSunlight) gameState.scoreMultiplier += 0.5;
+    
+    if (gameState.systems.payload) {
+        gameState.money += (10 * gameState.scoreMultiplier) / 60;
+    }
+    
+    gameState.score = gameState.money + (gameState.debris.avoided * 100) + (gameState.faults.fixedCount * 250) + (gameState.survivalTime * 5);
+}
+
+let frameCount = 0;
 function gameLoop() {
     requestAnimationFrame(gameLoop);
-    gameLoopCount++;
-
-    // Log every 60 frames (~1 second at 60fps)
-    if (gameLoopCount % 60 === 0) {
-        console.log(`🔄 GameLoop frame ${gameLoopCount}, gameOver: ${gameState.gameOver}, battery: ${gameState.battery.toFixed(1)}%`);
-    }
+    frameCount++;
 
     if (!gameState.gameOver) {
-        // Update satellite position and check eclipse
         const eclipseInfo = checkEclipse();
-        const wasInSunlight = gameState.isInSunlight;
         gameState.isInSunlight = eclipseInfo.isInSunlight;
-        
-        // Log eclipse changes
-        if (wasInSunlight !== gameState.isInSunlight && gameLoopCount % 60 === 0) {
-            console.log(`🌍 Eclipse changed: ${gameState.isInSunlight ? '☀️ SUNLIGHT' : '🌑 ECLIPSE'}`);
-        }
 
-        // Update battery
         updateBattery(gameState);
 
-        // Check for random faults
-        updateFaults(gameState);
+        if (!gameState.minigameActive) {
+            updateFaults(gameState);
+        }
 
-        // Update fault timer
         if (gameState.faults.current && gameState.faults.timer === null) {
             gameState.faults.timer = Date.now();
             playWarning();
         }
 
         if (gameState.faults.timer !== null) {
-            const faultDuration = Date.now() - gameState.faults.timer;
-            if (faultDuration > gameState.faults.maxTime) {
-                // Fault was not fixed in time - critical damage
-                playAlarm();
-                gameState.battery -= 30; // Drain 30% for unrepaired fault
-                console.log('🆘 SYSTEM FAILURE - Fault not repaired in time!');
-                gameState.faults.current = null;
-                gameState.faults.timer = null;
+            const elapsed = Date.now() - gameState.faults.timer;
+            const remaining = Math.max(0, gameState.faults.maxTime - elapsed);
+            
+            if (gameState.minigameActive) {
+                updateMinigameTimer(remaining, gameState.faults.maxTime);
+            }
+
+            if (remaining <= 0) {
+                gameState.faults.lockedSystems = [];
+                endGame('CRITICAL SYSTEM FAILURE');
             }
         }
 
-        // Update debris system
         updateDebris(gameState);
         gameState.debris.count = getDebrisCount();
+        gameState.debris.items = getDebrisArray();
+        gameState.orbitRadius = currentOrbitRadius;
 
-        // Handle debris collisions with visual/audio feedback
         if (gameState.debris.hits > 0) {
-            // Accumulate total hits
-            gameState.debris.totalHits += gameState.debris.hits;
-            console.log(`💥 Debris collision! Total hits: ${gameState.debris.totalHits}`);
-            
-            // Create explosion effect at satellite position
-            const satPos = getSatellitePosition();
-            if (satPos) {
-                createExplosion(satPos, 0xff4444, 15);
-                createSpark(satPos, 0xffaa00, 8);
-                playCollision();
-            }
-            gameState.debris.hits = 0;
+            endGame('DEBRIS COLLISION');
         }
 
-        // Update particle effects
         updateParticles();
+        updateScore();
 
-        // Update UI
-        updateUI(gameState);
-
-        // Calculate survival time
         gameState.survivalTime = Math.floor((Date.now() - gameState.startTime) / 1000);
+        updateUI(gameState);
         
-        // Log survival time every 10 seconds
-        if (gameState.survivalTime % 10 === 0 && gameLoopCount % 600 === 0) {
-            console.log(`⏱️ Survival Time: ${gameState.survivalTime}s`);
-        }
-
-        // Check game over condition: battery depleted
-        if (gameState.battery <= 0) {
-            playAlarm();
-            endGame();
-        }
-
-        // Check game over condition: too many debris hits
-        if (gameState.debris.totalHits >= 3) {
-            playAlarm();
-            endGame();
-        }
+        // Hide lines if comms are offline
+        setOrbitPathVisibility(gameState.systems.comms);
+        setDebrisLinesVisibility(gameState.systems.comms);
+        
+        gameState.powerFlowRate = getPowerFlowRate(gameState);
     }
 
-    // Animate Three.js scene
     animateScene();
 }
 
-// ==================== GAME END ====================
-function endGame() {
+export function endGame(reason = 'MISSION ABORTED') {
+    if (gameState.gameOver) return;
     gameState.gameOver = true;
-    console.log(`Game Over! Survival Time: ${gameState.survivalTime}s, Debris Hits: ${gameState.debris.totalHits}`);
-    
-    // Save score
-    const scoreResult = addScore(gameState.survivalTime, gameState.debris.totalHits);
-    console.log(`Score rank: #${scoreResult.rank}`);
-    if (scoreResult.isNewHighScore) {
-        console.log('🏆 NEW HIGH SCORE!');
-        playSuccess(0.8);
+
+    if (gameState.minigameActive) {
+        closeMinigame();
+        gameState.minigameActive = false;
     }
-    
-    // Display game over modal
-    const modal = document.getElementById('gameOverModal');
-    const finalScore = document.getElementById('finalScore');
-    const finalDebrisHits = document.getElementById('finalDebrisHits');
-    const scoreboardDisplay = document.getElementById('scoreboardDisplay');
-    
-    finalScore.textContent = gameState.survivalTime;
-    if (finalDebrisHits) finalDebrisHits.textContent = gameState.debris.totalHits;
-    
-    // Populate scoreboard
-    if (scoreboardDisplay) {
-        scoreboardDisplay.innerHTML = getScoreboardHTML();
+
+    const satPos = getSatellitePosition();
+    if (satPos) {
+        createExplosion(satPos, 0xff0000, 40);
+        playCollision();
     }
-    
-    modal.classList.remove('hidden');
+
+    setTimeout(() => {
+        const scoreResult = addScore(Math.floor(gameState.score), gameState.survivalTime, gameState.debris.hits);
+        if (scoreResult.isNewHighScore) {
+            playSuccess(0.8);
+        } else {
+            playAlarm();
+        }
+
+        const modal = document.getElementById('gameOverModal');
+        const finalScore = document.getElementById('finalScore');
+        const finalMoney = document.getElementById('finalMoney');
+        const finalTime = document.getElementById('finalTime');
+        const finalFaults = document.getElementById('finalFaults');
+        const finalDebris = document.getElementById('finalDebris');
+        const finalReason = document.getElementById('finalReason');
+        const scoreboardDisplay = document.getElementById('scoreboardDisplay');
+        const newHighScoreBadge = document.getElementById('newHighScoreBadge');
+
+        if (finalScore) finalScore.textContent = Math.floor(gameState.score).toLocaleString();
+        if (finalMoney) finalMoney.textContent = '$' + Math.floor(gameState.money).toLocaleString();
+        if (finalTime) finalTime.textContent = gameState.survivalTime + 's';
+        if (finalFaults) finalFaults.textContent = gameState.faults.fixedCount;
+        if (finalDebris) finalDebris.textContent = gameState.debris.avoided;
+        if (finalReason) finalReason.textContent = reason;
+        if (newHighScoreBadge) newHighScoreBadge.style.display = scoreResult.isNewHighScore ? 'block' : 'none';
+        if (scoreboardDisplay) scoreboardDisplay.innerHTML = getScoreboardHTML();
+
+        modal.classList.remove('hidden');
+    }, 2000);
 }
 
-// ==================== RESTART ====================
 function restartGame() {
-    console.log('🔄 Restarting game...');
-    gameState.battery = 100;
-    gameState.isInSunlight = true;
-    gameState.systems.comms = false;
-    gameState.systems.payload = false;
-    gameState.systems.camera = false;
-    gameState.faults.current = null;
-    gameState.faults.count = 0;
-    gameState.faults.timer = null;
-    gameState.debris.count = 0;
-    gameState.debris.hits = 0;
-    gameState.debris.totalHits = 0;
-    gameState.gameOver = false;
-    gameState.startTime = Date.now();
-    gameState.survivalTime = 0;
+    Object.assign(gameState, {
+        battery: 100,
+        isInSunlight: true,
+        systems: { comms: true, payload: true, camera: true },
+        faults: { current: null, severity: 'warning', count: 0, fixedCount: 0, timer: null, maxTime: 20000, lockedSystems: [], savedSystems: {}, noCharge: false },
+        debris: { count: 0, hits: 0, avoided: 0, items: [] },
+        score: 0,
+        money: 0,
+        scoreMultiplier: 1,
+        gameOver: false,
+        startTime: Date.now(),
+        survivalTime: 0,
+        minigameActive: false,
+        orbitRadius: 3.5,
+        isThrusting: false
+    });
 
-    // Clear visual effects
     clearAllDebris();
 
-    // Hide game over modal
-    const modal = document.getElementById('gameOverModal');
-    modal.classList.add('hidden');
-
-    // Clear UI fault alert
-    const faultAlert = document.getElementById('faultAlert');
-    faultAlert.classList.add('hidden');
-    faultAlert.classList.remove('active');
-    const restartButton = document.getElementById('restartButton');
-    restartButton.classList.add('hidden');
-
-    // Reset system buttons
-    document.getElementById('commToggle').classList.remove('active');
-    document.getElementById('payloadToggle').classList.remove('active');
-    document.getElementById('cameraToggle').classList.remove('active');
-
-    // Update UI
+    document.getElementById('gameOverModal').classList.add('hidden');
+    document.getElementById('faultAlert').classList.add('hidden');
+    document.getElementById('faultAlert').classList.remove('active');
+    document.getElementById('fixFaultButton').classList.add('hidden');
+    
+    closeMinigame();
     updateUI(gameState);
-
-    // Continue game loop
 }
 
-// ==================== EVENT LISTENERS ====================
 document.addEventListener('DOMContentLoaded', init);
 
-// Toggle debug panel with L key
-window.addEventListener('keydown', (event) => {
-    if (event.key.toLowerCase() === 'l') {
-        const debugPanel = document.getElementById('debugPanel');
-        if (debugPanel) {
-            debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
-            console.log(`📝 Debug panel ${debugPanel.style.display === 'none' ? 'hidden' : 'shown'}`);
-        }
+window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() === 'l') {
+        const p = document.getElementById('debugPanel');
+        if (p) p.style.display = p.style.display === 'none' ? 'block' : 'none';
     }
 });
 
 document.getElementById('restartGameButton').addEventListener('click', restartGame);
 
-// Export for use in other modules
 export { gameState, restartGame };

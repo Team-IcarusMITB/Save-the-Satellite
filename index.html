@@ -7,117 +7,164 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="game-container">
-        <!-- LEFT: 3D Canvas -->
-        <div class="canvas-container">
-            <canvas id="gameCanvas"></canvas>
-        </div>
-
-        <!-- RIGHT: Control Panel -->
-        <div class="control-panel">
+<div class="game-container">
+    <div class="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="controls-hint">WASD Q E Orbital Maneuver | Drag Camera | L Debug Log</div>
+    </div>
+    <div class="hud-container">
+        <div class="hud-panel top-left">
             <div class="panel-header">
-                <h2>SATELLITE CONTROL</h2>
+                <h2>SAT-1</h2>
+                <div class="header-sub">MISSION OPS REAL-TIME</div>
             </div>
-
-            <!-- Status Section -->
-            <div class="status-section">
-                <div class="status-item">
-                    <span class="label">Status:</span>
-                    <span id="statusIndicator" class="status-value sunlight">☀️ Sunlight</span>
+            <div class="panel-section">
+                <div class="status-row">
+                    <span class="label">Zone</span>
+                    <span id="statusIndicator" class="status-badge sunlight">SUNLIT</span>
                 </div>
-                <div class="status-item">
-                    <span class="label">Survival Time:</span>
-                    <span id="survivalTime" class="status-value">0s</span>
+                <div class="status-row">
+                    <span class="label">Elapsed</span>
+                    <span id="survivalTime" class="survival-value">0s</span>
+                </div>
+                <div class="score-row">
+                    <span class="section-label" style="margin:0">Total Score</span>
+                    <span id="multiplierDisplay" class="multiplier">x1.0</span>
+                </div>
+                <div id="scoreDisplay" class="score-value">0</div>
+                <div class="score-row" style="margin-top:8px;">
+                    <span class="section-label" style="margin:0; color:#00e87a;">Money Made</span>
+                </div>
+                <div id="moneyDisplay" class="money-value">$0</div>
+            </div>
+        </div>
+        <div class="hud-panel top-right">
+            <div class="panel-section fault-container">
+                <div class="section-label">System Status</div>
+                <div id="faultNominal" class="fault-nominal">
+                    <i class="dot"></i> All Systems Nominal
+                </div>
+                <div id="faultAlert" class="hidden">
+                    <div class="fault-header-row">
+                        <span class="fault-icon">!</span>
+                        <span id="faultText">FAULT</span>
+                    </div>
+                    <div class="fault-timer-row">
+                        <span>Time to failure</span>
+                        <span id="faultTimer" class="fault-timer">45.0s</span>
+                    </div>
+                    <button id="fixFaultButton" class="clear-fault-btn hidden">
+                        INITIATE REPAIR
+                    </button>
                 </div>
             </div>
-
-            <!-- Battery Section -->
-            <div class="battery-section">
-                <div class="battery-label">
-                    <span>Battery</span>
+            <div class="panel-section">
+                <div class="section-label">Hull Integrity</div>
+                <div class="status-row" style="margin-bottom:6px">
+                    <span class="label" style="color:var(--red); font-weight:bold; letter-spacing:0.1em;">CRITICAL 1 HIT FAILURE</span>
+                </div>
+            </div>
+            <div class="panel-section">
+                <div class="section-label">Power System</div>
+                <div class="battery-header">
+                    <span class="section-label" style="margin:0">Battery</span>
                     <span id="batteryPercent">100%</span>
                 </div>
-                <div class="battery-bar-container">
-                    <div class="battery-bar-background">
-                        <div class="battery-threshold"></div>
-                        <div id="batteryBar" class="battery-bar-fill"></div>
-                    </div>
+                <div class="battery-bar-wrap">
+                    <div id="batteryBar" class="battery-bar-fill" style="width:100%"></div>
+                    <div id="batteryGlow"></div>
                 </div>
-                <div class="battery-threshold-label">10% Critical</div>
+                <div id="powerFlow" class="power-flow charging"> +10.0%<span class="per-sec">/s</span></div>
             </div>
-
-            <!-- Systems Section -->
-            <div class="systems-section">
-                <h3>Systems</h3>
-                <div class="system-toggle">
-                    <button id="commToggle" class="system-button" data-system="comms">
-                        📡 Communications
-                    </button>
-                    <span class="system-power">-1%</span>
-                </div>
-                <div class="system-toggle">
-                    <button id="payloadToggle" class="system-button" data-system="payload">
-                        📦 Payload
-                    </button>
-                    <span class="system-power">-1%</span>
-                </div>
-                <div class="system-toggle">
-                    <button id="cameraToggle" class="system-button" data-system="camera">
-                        📷 Camera
-                    </button>
-                    <span class="system-power">-1%</span>
+        </div>
+        <div class="hud-panel bottom-left">
+            <div class="panel-section">
+                <div class="section-label">Orbital Track</div>
+                <div class="orbit-map-wrap">
+                    <canvas id="orbitMap" width="160" height="160"></canvas>
+                    <div class="orbit-legend">
+                        <span><i class="legend-dot sunlit"></i> Sunlit</span>
+                        <span><i class="legend-dot eclipse"></i> Eclipse</span>
+                    </div>
                 </div>
             </div>
-
-            <!-- Faults Section -->
-            <div class="faults-section">
-                <h3>System Status</h3>
-                <div id="faultAlert" class="fault-alert hidden">
-                    <div class="fault-message">
-                        <span id="faultText">No faults</span>
-                    </div>
-                    <button id="restartButton" class="restart-button hidden">
-                        🔄 Restart System
-                    </button>
+        </div>
+        <div class="hud-panel bottom-right">
+            <div class="panel-section">
+                <div class="section-label">Payload Systems</div>
+                <div class="section-label" style="font-size:9px;margin-bottom:10px;color:var(--text-mute)">
+                    Comms Blur Tracker | Cam Blurs View | Payload Stops Money
                 </div>
-            </div>
-
-            <!-- Game Over Modal (hidden initially) -->
-            <div id="gameOverModal" class="modal hidden">
-                <div class="modal-content">
-                    <h2>Mission Failed</h2>
-                    <p>Satellite lost power.</p>
-                    <div class="final-score">
-                        <p>Survival Time: <span id="finalScore">0</span> seconds</p>
-                        <p>Debris Hits: <span id="finalDebrisHits">0</span></p>
-                    </div>
-                    <div class="scoreboard-modal">
-                        <h3>🏆 High Scores</h3>
-                        <div id="scoreboardDisplay"></div>
-                    </div>
-                    <button id="restartGameButton" class="restart-game-button">
-                        ↻ Restart Game
-                    </button>
-                    <button id="viewScoreboard" class="view-scores-button">
-                        📊 View All Scores
-                    </button>
+                <div class="system-item">
+                    <button id="commToggle" class="system-button">Communications</button>
+                    <span class="system-drain" id="commDrain">-1.0%</span>
+                </div>
+                <div class="system-item">
+                    <button id="payloadToggle" class="system-button">Payload</button>
+                    <span class="system-drain" id="payloadDrain">-2.0%</span>
+                </div>
+                <div class="system-item">
+                    <button id="cameraToggle" class="system-button">Camera</button>
+                    <span class="system-drain" id="cameraDrain">-1.5%</span>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- DEBUG PANEL -->
-    <!-- DEBUG PANEL -->
-    <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto;">
-        <div>🛰️ SATELLITE DEBUG LOG</div>
-        <div id="debugLog" style="margin-top: 10px; line-height: 1.4;"></div>
+<div id="minigameModal" class="modal hidden">
+    <div class="modal-content minigame-wrapper">
+        <div class="modal-title">SYSTEM REPAIR</div>
+        <div class="mg-timer-wrap">
+            <div id="mgTimerBar" class="mg-timer-bar"></div>
+        </div>
+        <div id="minigameZone"></div>
     </div>
-    
-    <!-- Three.js library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@r128/examples/js/controls/OrbitControls.js"></script>
+</div>
 
-    <!-- Game Scripts -->
-    <script type="module" src="src/main.js"></script>
+<div id="gameOverModal" class="modal hidden">
+    <div class="modal-content">
+        <div class="modal-title">Mission Lost</div>
+        <div id="finalReason">POWER FAILURE</div>
+        <div id="newHighScoreBadge"> NEW HIGH SCORE </div>
+        <div class="final-stats-grid">
+            <div class="stat-cell">
+                <div class="stat-label">Total Score</div>
+                <div id="finalScore" class="stat-value big">0</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-label">Money Made</div>
+                <div id="finalMoney" class="stat-value" style="color:#00e87a;">$0</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-label">Time Survived</div>
+                <div id="finalTime" class="stat-value">0s</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-label">Debris Avoided</div>
+                <div id="finalDebris" class="stat-value">0</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-label">Faults Fixed</div>
+                <div id="finalFaults" class="stat-value">0</div>
+            </div>
+        </div>
+        <div class="scoreboard-modal">
+            <div id="scoreboardDisplay"></div>
+        </div>
+        <div class="modal-buttons">
+            <button id="restartGameButton" class="restart-game-button"> Retry Mission</button>
+        </div>
+    </div>
+</div>
+
+<div id="debugPanel">
+    <div style="color:#0af;margin-bottom:6px;letter-spacing:.1em">SAT DEBUG LOG</div>
+    <div id="debugLog"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@r128/examples/js/controls/OrbitControls.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

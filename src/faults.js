@@ -1,34 +1,51 @@
-// ==================== FAULTS MODULE ====================
-
 const FAULT_TYPES = [
-    'Communications Failure',
-    'Payload Error',
-    'Power Glitch',
-    'Sensor Malfunction',
-    'Thermal Warning'
+    { name: 'COMM LINK DROPOUT',     severity: 'warning',  locks: ['comms'] },
+    { name: 'PAYLOAD ANOMALY',       severity: 'warning',  locks: ['payload'] },
+    { name: 'SENSOR MALFUNCTION',    severity: 'warning',  locks: ['camera'] },
+    { name: 'THRUSTER GIMBAL LOCK',  severity: 'critical', locks: ['movement'] },
+    { name: 'POWER BUS GLITCH',      severity: 'critical', locks: ['comms', 'payload', 'camera', 'movement'] },
+    { name: 'THERMAL OVERRUN',       severity: 'warning',  locks: ['payload', 'camera'] },
+    { name: 'ATTITUDE DEVIATION',    severity: 'warning',  locks: ['movement', 'camera'] },
+    { name: 'MEMORY CHECKSUM ERR',   severity: 'warning',  locks: ['payload'] },
+    { name: 'SOLAR ARRAY ALIGN ERR', severity: 'critical', locks: ['payload'], effect: 'noCharge' },
+    { name: 'BATTERY CELL SHORT',    severity: 'critical', locks: ['camera', 'comms'], effect: 'drainBattery' }
 ];
 
-// Probability of fault per frame (at 60fps, this is ~1% chance per frame = avg 100 frames = ~1.67 seconds)
-// Adjust this value to change fault frequency
-const FAULT_PROBABILITY = 0.006; // ~0.6% chance per frame = average fault every 2-3 seconds
-
-// ==================== GENERATE RANDOM FAULT ====================
 export function generateRandomFault(gameState) {
-    const randomFault = FAULT_TYPES[Math.floor(Math.random() * FAULT_TYPES.length)];
-    gameState.faults.current = randomFault;
+    if (gameState.faults.current) return null;
+
+    const fault = FAULT_TYPES[Math.floor(Math.random() * FAULT_TYPES.length)];
+    gameState.faults.current = fault.name;
+    gameState.faults.severity = fault.severity;
     gameState.faults.count += 1;
-    console.log(`⚡ FAULT TRIGGERED: ${randomFault} (Count: ${gameState.faults.count})`);
-    return randomFault;
+    gameState.faults.lockedSystems = fault.locks || [];
+    
+    // Save snapshot of what was currently turned on
+    gameState.faults.savedSystems = { ...gameState.systems };
+    
+    // Automatically turn them off when locked
+    gameState.faults.lockedSystems.forEach(sys => {
+        if (sys !== 'movement') {
+            gameState.systems[sys] = false;
+        }
+    });
+
+    // Handle immediate brutal effects
+    if (fault.effect === 'noCharge') {
+        gameState.faults.noCharge = true;
+    }
+    if (fault.effect === 'drainBattery') {
+        gameState.battery *= 0.5; // Instantly rip away half their remaining battery
+    }
+
+    return fault;
 }
 
-// ==================== UPDATE FAULTS ====================
 export function updateFaults(gameState) {
-    // If no fault is active, randomly generate one based on probability
+    const dynamicProb = 0.002 + (gameState.survivalTime * 0.00005);
     if (!gameState.faults.current) {
-        if (Math.random() < FAULT_PROBABILITY) {
+        if (Math.random() < dynamicProb) {
             generateRandomFault(gameState);
         }
     }
-
-    // If there's an active fault, it will persist until user clicks "Restart System"
 }
