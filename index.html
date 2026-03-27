@@ -8,22 +8,19 @@
 </head>
 <body>
     <div class="game-container">
-        <!-- LEFT: 3D Canvas -->
         <div class="canvas-container">
             <canvas id="gameCanvas" tabindex="0"></canvas>
         </div>
 
-        <!-- RIGHT: Control Panel -->
         <div class="control-panel">
             <div class="panel-header">
                 <h2>SATELLITE CONTROL</h2>
             </div>
 
-            <!-- Status Section -->
             <div class="status-section">
                 <div class="status-item">
                     <span class="label">Status:</span>
-                    <span id="statusIndicator" class="status-value sunlight">☀️ Sunlight</span>
+                    <span id="statusIndicator" class="status-value sunlight">Sunlight</span>
                 </div>
                 <div class="status-item">
                     <span class="label">Survival Time:</span>
@@ -31,7 +28,6 @@
                 </div>
             </div>
 
-            <!-- Battery Section -->
             <div class="battery-section">
                 <div class="battery-label">
                     <span>Battery</span>
@@ -46,30 +42,28 @@
                 <div class="battery-threshold-label">10% Critical</div>
             </div>
 
-            <!-- Systems Section -->
             <div class="systems-section">
                 <h3>Systems</h3>
                 <div class="system-toggle">
                     <button id="commToggle" class="system-button" data-system="comms">
-                        📡 Communications
+                        Communications
                     </button>
                     <span class="system-power">-1%</span>
                 </div>
                 <div class="system-toggle">
                     <button id="payloadToggle" class="system-button" data-system="payload">
-                        📦 Payload
+                        Payload
                     </button>
                     <span class="system-power">-1%</span>
                 </div>
                 <div class="system-toggle">
                     <button id="cameraToggle" class="system-button" data-system="camera">
-                        📷 Camera
+                        Camera
                     </button>
                     <span class="system-power">-1%</span>
                 </div>
             </div>
 
-            <!-- Faults Section -->
             <div class="faults-section">
                 <h3>System Status</h3>
                 <div id="faultAlert" class="fault-alert hidden">
@@ -77,12 +71,11 @@
                         <span id="faultText">No faults</span>
                     </div>
                     <button id="restartButton" class="restart-button hidden">
-                        🔄 Restart System
+                        Restart System
                     </button>
                 </div>
             </div>
 
-            <!-- Game Over Modal (hidden initially) -->
             <div id="gameOverModal" class="modal hidden">
                 <div class="modal-content">
                     <h2>Mission Failed</h2>
@@ -92,32 +85,36 @@
                         <p>Debris Hits: <span id="finalDebrisHits">0</span></p>
                     </div>
                     <div class="scoreboard-modal">
-                        <h3>🏆 High Scores</h3>
+                        <h3>High Scores</h3>
                         <div id="scoreboardDisplay"></div>
                     </div>
                     <button id="restartGameButton" class="restart-game-button">
-                        ↻ Restart Game
+                        Restart Game
                     </button>
                     <button id="viewScoreboard" class="view-scores-button">
-                        📊 View All Scores
+                        View All Scores
                     </button>
+                </div>
+            </div>
+
+            <div id="minigameModal" class="modal hidden">
+                <div class="modal-content minigame-content">
+                    <h2 id="minigameTitle">REPAIR SYSTEM</h2>
+                    <div id="minigameTimer" class="minigame-timer">Time Remaining: <span id="mgTime">15</span>s</div>
+                    <div id="minigameArea" class="minigame-area"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- DEBUG PANEL -->
-    <!-- DEBUG PANEL -->
-    <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto;">
-        <div>🛰️ SATELLITE DEBUG LOG</div>
+    <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto; display: none;">
+        <div>SATELLITE DEBUG LOG</div>
         <div id="debugLog" style="margin-top: 10px; line-height: 1.4;"></div>
     </div>
     
-    <!-- Three.js library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
-    <!-- Game Scripts -->
     <script type="module" src="src/main.js"></script>
 </body>
 </html>
