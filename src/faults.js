@@ -23,9 +23,12 @@ export function generateRandomFault(gameState) {
 
 // ==================== UPDATE FAULTS ====================
 export function updateFaults(gameState) {
+    const difficultyFaultMultiplier = gameState?.difficulty?.faultChanceMultiplier || 1;
+    const dynamicFaultProbability = Math.min(0.02, FAULT_PROBABILITY * difficultyFaultMultiplier);
+
     // If no fault is active, randomly generate one based on probability
     if (!gameState.faults.current) {
-        if (Math.random() < FAULT_PROBABILITY) {
+        if (Math.random() < dynamicFaultProbability) {
             generateRandomFault(gameState);
         }
     }

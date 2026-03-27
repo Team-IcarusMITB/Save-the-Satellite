@@ -17,8 +17,22 @@ let currentOrbitAngle = 0;
 let orbitStartTime = Date.now();
 let earthMesh, lightsMesh, cloudsMesh, moonMesh;
 let satelliteOffset = new THREE.Vector3(0, 0, 0);
-const SATELLITE_MANEUVER_SPEED = 0.02;
+const SATELLITE_MANEUVER_SPEED = 1.55; // units per second
+const SATELLITE_PRECISION_MULTIPLIER = 0.5; // Hold Shift for finer movement
+const SATELLITE_MAX_DEVIATION = 0.75; // Max distance from orbit path centerline
+const SATELLITE_RECENTER_RATE = 1.35; // How quickly ship drifts back toward the nominal orbit
 let moonGroup;
+let lastFrameTime = performance.now();
+let maneuverPowerDraw = 0;
+const maneuverInput = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+    precision: false
+};
 
 // Manual camera drag state
 let isDragging = false;
@@ -29,6 +43,57 @@ let cameraPhi = Math.PI / 4;
 let cameraRadius = 9;
 const CAMERA_MIN_RADIUS = 4;
 const CAMERA_MAX_RADIUS = 20;
+
+function showWebGLError(message) {
+    let banner = document.getElementById('webglErrorBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'webglErrorBanner';
+        banner.style.cssText = `
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5000;
+            max-width: 92vw;
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: rgba(255, 68, 68, 0.94);
+            color: #fff;
+            font: 600 13px/1.4 'Segoe UI', sans-serif;
+            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.4);
+        `;
+        document.body.appendChild(banner);
+    }
+
+    banner.textContent = message;
+}
+
+function createRendererWithFallback(canvas) {
+    const attempts = [
+        { antialias: true, powerPreference: 'high-performance' },
+        { antialias: false, powerPreference: 'high-performance' },
+        { antialias: false, powerPreference: 'low-power' }
+    ];
+
+    for (const options of attempts) {
+        try {
+            const candidate = new THREE.WebGLRenderer({
+                canvas,
+                alpha: false,
+                preserveDrawingBuffer: false,
+                failIfMajorPerformanceCaveat: false,
+                ...options
+            });
+            console.log(`✅ WebGL renderer created with antialias=${options.antialias}, powerPreference=${options.powerPreference}`);
+            return candidate;
+        } catch (error) {
+            console.warn(`⚠️ WebGL renderer init failed with antialias=${options.antialias}, powerPreference=${options.powerPreference}:`, error?.message || error);
+        }
+    }
+
+    return null;
+}
 
 
 // ==================== SCENE INITIALIZATION ====================
@@ -42,7 +107,8 @@ export function initScene() {
     const canvas = document.getElementById('gameCanvas');
     if (!canvas) {
         console.error('❌ Canvas not found! Check index.html');
-        return;
+        showWebGLError('Canvas not found. Please reload the page.');
+        return false;
     }
     
     console.log('📍 Canvas element found:', canvas.id);
@@ -52,7 +118,9 @@ export function initScene() {
     console.log(`📍 Canvas size BEFORE: ${width}x${height}px (display) | ${canvas.width}x${canvas.height}px (actual)`);
     
     if (width === 0 || height === 0) {
-        console.error('❌ CRITICAL: Canvas has zero width or height! CSS display issue?');
+        console.warn('⚠️ Canvas had zero dimensions; applying safe fallback size.');
+        width = Math.max(1, window.innerWidth - 340);
+        height = Math.max(1, window.innerHeight - 40);
     }
     
     camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
@@ -60,10 +128,17 @@ export function initScene() {
     camera.lookAt(0, 0, 0);
     console.log('✅ Camera created at position', camera.position);
 
-    // Setup renderer with tone mapping for realistic lighting
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // Setup renderer with fallback attempts for broader device compatibility
+    renderer = createRendererWithFallback(canvas);
+    if (!renderer) {
+        const helpMessage = 'WebGL could not start. Enable hardware acceleration or try another browser/GPU setting.';
+        console.error(`❌ ${helpMessage}`);
+        showWebGLError(helpMessage);
+        return false;
+    }
+
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     
     // EXPLICITLY set canvas resolution to match display size
     canvas.width = width;
@@ -119,6 +194,7 @@ export function initScene() {
 
     console.log('✅ Three.js scene fully initialized');
     console.log('Scene children count:', scene.children.length);
+    return true;
 }
 
 // ==================== CREATE EARTH ====================
@@ -455,43 +531,95 @@ export function checkEclipse() {
 }
 
 function setupManeuverControls() {
-    window.addEventListener('keydown', (event) => {
-        const key = event.key.toLowerCase();
-        if (key === 'w' || key === 'arrowup') {
-    satelliteOffset.z -= SATELLITE_MANEUVER_SPEED;
+    const isManeuverKey = (key) => {
+        return ['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'].includes(key);
+    };
 
-        if (window.tutorialState) {
+    const updateKeyState = (event, isPressed) => {
+        const key = event.key.toLowerCase();
+
+        // Ignore typing in input-like elements.
+        const targetTag = event.target?.tagName?.toLowerCase();
+        if (targetTag === 'input' || targetTag === 'textarea' || event.target?.isContentEditable) {
+            return;
+        }
+
+        if (!isManeuverKey(key)) return;
+        event.preventDefault();
+
+        if (key === 'w' || key === 'arrowup') maneuverInput.forward = isPressed;
+        if (key === 's' || key === 'arrowdown') maneuverInput.backward = isPressed;
+        if (key === 'a' || key === 'arrowleft') maneuverInput.left = isPressed;
+        if (key === 'd' || key === 'arrowright') maneuverInput.right = isPressed;
+        if (key === 'q') maneuverInput.up = isPressed;
+        if (key === 'e') maneuverInput.down = isPressed;
+        if (key === 'shift') maneuverInput.precision = isPressed;
+
+        if (
+            isPressed &&
+            (maneuverInput.forward || maneuverInput.backward || maneuverInput.left || maneuverInput.right || maneuverInput.up || maneuverInput.down) &&
+            window.tutorialState
+        ) {
             window.tutorialState.moved = true;
         }
-    }
-        if (key === 's' || key === 'arrowdown') {
-            satelliteOffset.z += SATELLITE_MANEUVER_SPEED;
-        }
-        if (key === 'a' || key === 'arrowleft') {
-            satelliteOffset.x -= SATELLITE_MANEUVER_SPEED;
-        }
-        if (key === 'd' || key === 'arrowright') {
-            satelliteOffset.x += SATELLITE_MANEUVER_SPEED;
-        }
-        if (key === 'q') {
-            satelliteOffset.y += SATELLITE_MANEUVER_SPEED;
-        }
-        if (key === 'e') {
-            satelliteOffset.y -= SATELLITE_MANEUVER_SPEED;
-        }
+    };
 
-        // Keep offset bounded
-        satelliteOffset.clamp(
-            new THREE.Vector3(-3, -2, -3),
-            new THREE.Vector3(3, 2, 3)
-        );
+    window.addEventListener('keydown', (event) => {
+        updateKeyState(event, true);
     });
 
-    console.log('✅ Maneuver controls active: WASD/Arrow keys + Q/E to adjust satellite position');
+    window.addEventListener('keyup', (event) => {
+        updateKeyState(event, false);
+    });
+
+    console.log('✅ Maneuver controls active: hold WASD/Arrows + Q/E (hold Shift for precision)');
+}
+
+function applyManeuverInput(deltaTime) {
+    const axisX = (maneuverInput.right ? 1 : 0) - (maneuverInput.left ? 1 : 0);
+    const axisY = (maneuverInput.up ? 1 : 0) - (maneuverInput.down ? 1 : 0);
+    const axisZ = (maneuverInput.backward ? 1 : 0) - (maneuverInput.forward ? 1 : 0);
+
+    const moveVector = new THREE.Vector3(axisX, axisY, axisZ);
+    const hasManualInput = moveVector.lengthSq() > 0;
+
+    if (hasManualInput) {
+        if (moveVector.lengthSq() > 1) {
+            moveVector.normalize();
+        }
+
+        const speedMultiplier = maneuverInput.precision ? SATELLITE_PRECISION_MULTIPLIER : 1;
+        satelliteOffset.add(moveVector.multiplyScalar(SATELLITE_MANEUVER_SPEED * speedMultiplier * deltaTime));
+
+        // Battery cost grows with stronger control input.
+        const targetDraw = 0.85 * speedMultiplier + (satelliteOffset.length() / SATELLITE_MAX_DEVIATION) * 0.55;
+        maneuverPowerDraw += (targetDraw - maneuverPowerDraw) * Math.min(1, deltaTime * 8);
+    } else {
+        // No maneuver input: gradually settle and stop spending maneuver power.
+        maneuverPowerDraw += (0 - maneuverPowerDraw) * Math.min(1, deltaTime * 5);
+    }
+
+    // Keep satellite near its nominal orbit path and avoid runaway drifting.
+    const recenterAmount = Math.min(1, SATELLITE_RECENTER_RATE * deltaTime);
+    satelliteOffset.multiplyScalar(1 - recenterAmount);
+
+    if (satelliteOffset.length() > SATELLITE_MAX_DEVIATION) {
+        satelliteOffset.setLength(SATELLITE_MAX_DEVIATION);
+    }
+}
+
+export function getManeuverPowerDraw() {
+    return Math.max(0, maneuverPowerDraw);
 }
 
 // ==================== ANIMATE SCENE ====================
 export function animateScene() {
+    const now = performance.now();
+    const deltaTime = Math.min(0.05, (now - lastFrameTime) / 1000); // Clamp delta for tab switches
+    lastFrameTime = now;
+
+    applyManeuverInput(deltaTime);
+
     // Update satellite position
     updateSatellitePosition();
 

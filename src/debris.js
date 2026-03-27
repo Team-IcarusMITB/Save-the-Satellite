@@ -5,6 +5,8 @@ const DEBRIS_SIZE = 0.15;
 const DEBRIS_SPEED = 0.08;
 const DEBRIS_SPAWN_DISTANCE = 15;
 const COLLISION_DISTANCE = 0.8;
+const WARNING_DISTANCE = 9;
+const MIN_APPROACH_SPEED = 0.015;
 const DEBRIS_PROBABILITY = 0.0008; // ~0.08% chance per frame = debris every ~2 seconds
 
 let debrisArray = [];
@@ -41,22 +43,36 @@ function generateDebris() {
 
     scene.add(debrisMesh);
 
-    const satellitePosition = getSatellitePosition();
-    let target;
-    if (satellitePosition) {
-        target = satellitePosition;
-    } else {
-        target = new THREE.Vector3(0, 0, 0);
-    }
+    const spawnPos = new THREE.Vector3(x, y, z);
+    const satellitePosition = getSatellitePosition() || new THREE.Vector3(0, 0, 0);
 
-    const directionToSat = target.clone().sub(new THREE.Vector3(x, y, z)).normalize();
-    // Add a small random spread to allow player avoidance 
-    directionToSat.add(new THREE.Vector3((Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08, (Math.random() - 0.5) * 0.08)).normalize();
+    // Build a mostly straight pass trajectory near the satellite so the player can dodge.
+    const toSatellite = satellitePosition.clone().sub(spawnPos).normalize();
+    const randomAxis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    let lateral = toSatellite.clone().cross(randomAxis);
+    if (lateral.lengthSq() < 0.001) {
+        lateral = toSatellite.clone().cross(new THREE.Vector3(0, 1, 0));
+    }
+    lateral.normalize();
+
+    // Most asteroids miss by a decent margin; a few are tighter to stay challenging.
+    const isTightPass = Math.random() < 0.22;
+    const missDistance = isTightPass
+        ? 0.2 + Math.random() * 0.45
+        : 0.9 + Math.random() * 1.9;
+
+    const targetPoint = satellitePosition
+        .clone()
+        .add(lateral.multiplyScalar((Math.random() < 0.5 ? -1 : 1) * missDistance));
+
+    const direction = targetPoint.sub(spawnPos).normalize();
+    const speed = DEBRIS_SPEED * (0.85 + Math.random() * 0.35);
 
     const debris = {
         mesh: debrisMesh,
-        position: new THREE.Vector3(x, y, z),
-        velocity: directionToSat.multiplyScalar(DEBRIS_SPEED),
+        position: spawnPos,
+        velocity: direction.multiplyScalar(speed),
+        baseSpeed: speed,
         rotationVelocity: new THREE.Vector3(
             (Math.random() - 0.5) * 0.1,
             (Math.random() - 0.5) * 0.1,
@@ -74,8 +90,12 @@ function generateDebris() {
 
 // ==================== UPDATE DEBRIS ====================
 export function updateDebris(gameState) {
+    const debrisDifficulty = gameState.difficulty || null;
+    const spawnMultiplier = debrisDifficulty ? debrisDifficulty.debrisSpawnMultiplier || 1 : 1;
+    const speedMultiplier = debrisDifficulty ? debrisDifficulty.debrisSpeedMultiplier || 1 : 1;
+
     // Randomly spawn new debris
-    if (Math.random() < DEBRIS_PROBABILITY && !gameState.gameOver) {
+    if (Math.random() < DEBRIS_PROBABILITY * spawnMultiplier && !gameState.gameOver) {
         generateDebris();
     }
 
@@ -83,14 +103,16 @@ export function updateDebris(gameState) {
     const satPos = getSatellitePosition();
     if (!satPos) return;
 
+    let strongestIncomingWarning = null;
+    let bestThreatScore = Number.POSITIVE_INFINITY;
+
     for (let i = debrisArray.length - 1; i >= 0; i--) {
         const debris = debrisArray[i];
-        
-        // Homing behavior: steer debris toward moving satellite
-        const targetPos = getSatellitePosition();
-        if (targetPos) {
-            const desiredDir = targetPos.clone().sub(debris.position).normalize().multiplyScalar(DEBRIS_SPEED);
-            debris.velocity.lerp(desiredDir, 0.02); // slight steering toward sat
+
+        // Scale speed gradually with survival difficulty.
+        if (Math.abs(speedMultiplier - 1) > 0.001 && debris.velocity.lengthSq() > 0.00001) {
+            const targetSpeed = debris.baseSpeed * speedMultiplier;
+            debris.velocity.setLength(targetSpeed);
         }
 
         // Update position
@@ -105,8 +127,21 @@ export function updateDebris(gameState) {
         // Age debris
         debris.age += 16.67; // ~60fps
 
+        // Determine if this debris is a meaningful incoming threat for warning UI.
+        const toSatellite = satPos.clone().sub(debris.position);
+        const distance = toSatellite.length();
+        if (distance > 0.001) {
+            const approachSpeed = debris.velocity.dot(toSatellite.clone().normalize());
+            if (distance <= WARNING_DISTANCE && approachSpeed > MIN_APPROACH_SPEED) {
+                const threatScore = distance - approachSpeed * 8;
+                if (threatScore < bestThreatScore) {
+                    bestThreatScore = threatScore;
+                    strongestIncomingWarning = resolveIncomingDirection(debris.position, satPos);
+                }
+            }
+        }
+
         // Check collision with satellite
-        const distance = debris.position.distanceTo(satPos);
         if (distance < COLLISION_DISTANCE) {
             // Collision detected!
             gameState.debris.hits = (gameState.debris.hits || 0) + 1;
@@ -121,7 +156,26 @@ export function updateDebris(gameState) {
         }
     }
 
+    gameState.debris.warningDirection = strongestIncomingWarning;
+
     return debrisArray;
+}
+
+function resolveIncomingDirection(debrisPosition, satellitePosition) {
+    const relative = debrisPosition.clone().sub(satellitePosition);
+    const absX = Math.abs(relative.x);
+    const absY = Math.abs(relative.y);
+    const absZ = Math.abs(relative.z);
+
+    if (absY > absX && absY > absZ) {
+        return relative.y > 0 ? 'ABOVE' : 'BELOW';
+    }
+
+    if (absX >= absZ) {
+        return relative.x > 0 ? 'RIGHT' : 'LEFT';
+    }
+
+    return relative.z > 0 ? 'FRONT' : 'BEHIND';
 }
 
 // ==================== REMOVE DEBRIS ====================

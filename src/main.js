@@ -2,33 +2,51 @@
 console.log('🚀 main.js module loading...');
 
 // ==================== DEBUG LOGGING FUNCTION ====================
-const originalLog = console.log;
+const originalLog = console.log.bind(console);
+const originalWarn = console.warn.bind(console);
+const originalError = console.error.bind(console);
+
+const debugEntries = [];
+let debugVisible = false;
+let debugFPS = 0;
+let debugFrameCounter = 0;
+let debugFPSTimer = performance.now();
+
+function appendDebugLog(message) {
+    debugEntries.push({
+        time: new Date(),
+        message: String(message)
+    });
+
+    while (debugEntries.length > 35) {
+        debugEntries.shift();
+    }
+
+    if (debugVisible) {
+        renderDebugLog();
+    }
+}
 
 window.debugLog = function(message) {
-    // Use original console.log, NOT the intercepted one
-    originalLog.apply(console, [message]);
-    const debugPanel = document.getElementById('debugLog');
-    if (debugPanel) {
-        const line = document.createElement('div');
-        line.textContent = message;
-        debugPanel.appendChild(line);
-        // Keep only last 20 lines
-        while (debugPanel.children.length > 20) {
-            debugPanel.removeChild(debugPanel.firstChild);
-        }
-        // Auto-scroll to bottom
-        debugPanel.parentElement.scrollTop = debugPanel.parentElement.scrollHeight;
-    }
+    appendDebugLog(message);
 };
 
-// Intercept console.log to also show in debug panel
 console.log = function(...args) {
-    originalLog.apply(console, args);
-    window.debugLog(args.join(' '));
+    originalLog(...args);
+    appendDebugLog(args.join(' '));
 };
 
-// Log that debug listener is active
-window.debugLog('📍 Debug panel initialized');
+console.warn = function(...args) {
+    originalWarn(...args);
+    appendDebugLog(`⚠️ ${args.join(' ')}`);
+};
+
+console.error = function(...args) {
+    originalError(...args);
+    appendDebugLog(`❌ ${args.join(' ')}`);
+};
+
+window.debugLog('📍 Debug telemetry ready (toggle with L)');
 
 // ==================== GAME STATE ====================
 const gameState = {
@@ -48,7 +66,15 @@ const gameState = {
     debris: {
         count: 0,
         hits: 0,        // Collisions this frame
-        totalHits: 0    // Cumulative collision count for game-over
+        totalHits: 0,   // Cumulative collision count for game-over
+        warningDirection: null
+    },
+    difficulty: {
+        level: 1,
+        intensity: 1,
+        debrisSpawnMultiplier: 1,
+        debrisSpeedMultiplier: 1,
+        faultChanceMultiplier: 1
     },
     gameOver: false,
     startTime: Date.now(),
@@ -61,7 +87,7 @@ console.log('THREE.js version:', typeof THREE !== 'undefined' ? 'LOADED' : 'NOT 
 console.log('Initial game state:', gameState);
 
 // ==================== IMPORTS ====================
-import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition } from './scene.js';
+import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition, getOrbitAngle, getManeuverPowerDraw } from './scene.js';
 import { updateUI, setupUIListeners } from './ui.js';
 import { updateBattery, checkEclipse, calculateDrain } from './systems.js';
 import { updateFaults, generateRandomFault } from './faults.js';
@@ -71,11 +97,59 @@ import { initAudio, playAlarm, playSuccess, playCollision, playWarning } from '.
 import { initScoreboard, addScore, getScoreboardHTML } from './scoreboard.js';
 import { startTutorial, isTutorialActive, updateTutorial , forceNextStep } from './tutorial.js';
 // ==================== INITIALIZATION ====================
+function renderDebugLog() {
+    const logContainer = document.getElementById('debugLog');
+    if (!logContainer) return;
+
+    logContainer.innerHTML = '';
+    debugEntries.forEach((entry) => {
+        const line = document.createElement('div');
+        line.className = 'debug-log-entry';
+
+        const timeEl = document.createElement('span');
+        timeEl.className = 'debug-log-time';
+        timeEl.textContent = entry.time.toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' });
+
+        const msgEl = document.createElement('span');
+        msgEl.className = 'debug-log-message';
+        msgEl.textContent = entry.message;
+
+        line.appendChild(timeEl);
+        line.appendChild(msgEl);
+        logContainer.appendChild(line);
+    });
+
+    logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function setDebugValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function updateDebugHUD() {
+    setDebugValue('dbgFps', `${debugFPS.toFixed(0)} fps`);
+    setDebugValue('dbgBattery', `${gameState.battery.toFixed(1)}%`);
+    setDebugValue('dbgSun', gameState.isInSunlight ? 'SUNLIGHT' : 'ECLIPSE');
+    setDebugValue('dbgDrain', `${calculateDrain(gameState).toFixed(2)} u/s`);
+    setDebugValue('dbgManeuver', `${getManeuverPowerDraw().toFixed(2)} u/s`);
+    setDebugValue('dbgDifficulty', `Lv ${gameState.difficulty.level} (${gameState.difficulty.intensity.toFixed(2)}x)`);
+    setDebugValue('dbgFault', gameState.faults.current ? `⚠ ${gameState.faults.current}` : 'Nominal');
+    setDebugValue('dbgDebris', `${gameState.debris.count} active / ${gameState.debris.totalHits} hits`);
+    setDebugValue('dbgWarning', gameState.debris.warningDirection || 'None');
+    setDebugValue('dbgOrbit', `${(getOrbitAngle() * (180 / Math.PI)).toFixed(1)}°`);
+}
+
 function init() {
     console.log('🛰️ Initializing Keep the Satellite Alive...');
     console.log('📍 DOMContentLoaded fired, starting initialization...');
 
-    initScene();
+    const sceneInitialized = initScene();
+    if (!sceneInitialized) {
+        console.error('❌ Scene initialization failed. Game startup aborted.');
+        return;
+    }
+
     const scene = getScene();
 
     initDebris(scene);
@@ -85,6 +159,14 @@ function init() {
 
     setupUIListeners(gameState);
     updateUI(gameState);
+
+    const clearBtn = document.getElementById('debugClear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            debugEntries.length = 0;
+            renderDebugLog();
+        });
+    }
 
     console.log('✅ INITIALIZATION COMPLETE - GameLoop starting');
     console.log('Current game state:', gameState);
@@ -98,10 +180,34 @@ function init() {
 // ==================== GAME LOOP ====================
 
 let gameLoopCount = 0;
+
+function updateDifficultyScaling() {
+    const elapsedSeconds = Math.floor((Date.now() - gameState.startTime) / 1000);
+    const level = Math.floor(elapsedSeconds / 30) + 1;
+    const intensity = Math.min(2.6, 1 + elapsedSeconds / 95);
+
+    gameState.difficulty.level = level;
+    gameState.difficulty.intensity = intensity;
+    gameState.difficulty.debrisSpawnMultiplier = Math.min(3.2, 1 + elapsedSeconds / 60);
+    gameState.difficulty.debrisSpeedMultiplier = Math.min(2.3, 1 + elapsedSeconds / 120);
+    gameState.difficulty.faultChanceMultiplier = Math.min(2.7, 1 + elapsedSeconds / 90);
+
+    // Less time to repair faults as mission gets harder.
+    gameState.faults.maxTime = Math.max(12000, 30000 - elapsedSeconds * 240);
+}
+
 function gameLoop() {
     requestAnimationFrame(gameLoop);
     updateTutorial();
     gameLoopCount++;
+
+    debugFrameCounter++;
+    const now = performance.now();
+    if (now - debugFPSTimer >= 1000) {
+        debugFPS = (debugFrameCounter * 1000) / (now - debugFPSTimer);
+        debugFrameCounter = 0;
+        debugFPSTimer = now;
+    }
 
     // Log every 60 frames (~1 second at 60fps)
     if (gameLoopCount % 60 === 0) {
@@ -109,6 +215,8 @@ function gameLoop() {
     }
 
     if (!gameState.gameOver && !isTutorialActive()) {
+        updateDifficultyScaling();
+
         // Update satellite position and check eclipse
         const eclipseInfo = checkEclipse();
         const wasInSunlight = gameState.isInSunlight;
@@ -192,6 +300,10 @@ function gameLoop() {
 
     // Animate Three.js scene
     animateScene();
+
+    if (debugVisible && gameLoopCount % 6 === 0) {
+        updateDebugHUD();
+    }
 }
 
 // ==================== GAME END ====================
@@ -238,9 +350,16 @@ function restartGame() {
     gameState.debris.count = 0;
     gameState.debris.hits = 0;
     gameState.debris.totalHits = 0;
+    gameState.debris.warningDirection = null;
+    gameState.difficulty.level = 1;
+    gameState.difficulty.intensity = 1;
+    gameState.difficulty.debrisSpawnMultiplier = 1;
+    gameState.difficulty.debrisSpeedMultiplier = 1;
+    gameState.difficulty.faultChanceMultiplier = 1;
     gameState.gameOver = false;
     gameState.startTime = Date.now();
     gameState.survivalTime = 0;
+    gameState.faults.maxTime = 30000;
 
     // Clear visual effects
     clearAllDebris();
@@ -271,7 +390,6 @@ function restartGame() {
 document.addEventListener('DOMContentLoaded', init);
 
 // Toggle debug panel with L key
-let debugVisible = false;
 
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'l') {
@@ -279,7 +397,12 @@ window.addEventListener('keydown', (event) => {
 
         const debugPanel = document.getElementById('debugPanel');
         if (debugPanel) {
-            debugPanel.style.display = debugVisible ? 'block' : 'none';
+            debugPanel.classList.toggle('visible', debugVisible);
+        }
+
+        if (debugVisible) {
+            updateDebugHUD();
+            renderDebugLog();
         }
 
         console.log(`📝 Debug panel ${debugVisible ? 'shown' : 'hidden'}`);

@@ -1,78 +1,130 @@
 let tutorialStep = 0;
-let tutorialActive = true;
+let tutorialActive = false;
+let highlightedElement = null;
+let isKeyListenerBound = false;
 
 const steps = [
     {
-        text: "Press W to move forward",
-        check: () => window.tutorialState.moved
+        title: 'Welcome Commander',
+        text: 'Your mission is to keep the satellite alive as long as possible while orbiting Earth.',
+        targetSelector: null
     },
     {
-        text: "Toggle Communications system",
-        check: () => window.tutorialState.commsUsed
+        title: '3D Space View',
+        text: 'Left side is the live space view. Drag to rotate camera, scroll to zoom, and use WASD (or arrow keys) + Q/E to maneuver.',
+        targetSelector: '.canvas-container'
     },
     {
-        text: "Avoid debris (just wait a moment...)",
-        check: () => window.tutorialState.waited
+        title: 'Status + Battery',
+        text: 'Watch sunlight/shadow status and battery level. In shadow, battery drains faster, so power management is critical.',
+        targetSelector: '.status-section'
     },
     {
-        text: "Good. Survive as long as possible.",
-        check: () => true
+        title: 'System Controls',
+        text: 'Use Communications, Payload, and Camera buttons on the right. Active systems consume extra battery.',
+        targetSelector: '.systems-section'
+    },
+    {
+        title: 'Faults + Debris',
+        text: 'Fix faults quickly using Restart System and avoid debris collisions. Too many hits or zero battery ends the mission.',
+        targetSelector: '.faults-section'
+    },
+    {
+        title: 'You Are Ready',
+        text: 'Press Next (or Enter) to begin. Good luck, Commander!'
     }
 ];
-export function forceNextStep() {
-    tutorialStep++;
 
+export function forceNextStep() {
+    if (!tutorialActive) return;
+
+    tutorialStep += 1;
     if (tutorialStep >= steps.length) {
         endTutorial();
-    } else {
-        updateStep();
+        return;
     }
+
+    updateStep();
 }
+
 export function startTutorial() {
     tutorialStep = 0;
     tutorialActive = true;
 
-    // global state tracker
-    window.tutorialState = {
-        moved: false,
-        commsUsed: false,
-        waited: false
-    };
+    const overlay = document.getElementById('tutorialOverlay');
+    if (!overlay) {
+        tutorialActive = false;
+        return;
+    }
 
-    document.getElementById('tutorialOverlay').style.display = 'block';
+    bindEnterKeyOnce();
+    overlay.classList.remove('hidden');
     updateStep();
+}
 
-    // auto wait trigger
-    setTimeout(() => {
-        if (window.tutorialState) {
-            window.tutorialState.waited = true;
-        }
-    }, 3000);
+function bindEnterKeyOnce() {
+    if (isKeyListenerBound) return;
+
+    window.addEventListener('keydown', (event) => {
+        if (!tutorialActive) return;
+        if (event.key !== 'Enter') return;
+
+        event.preventDefault();
+        forceNextStep();
+    });
+
+    isKeyListenerBound = true;
+}
+
+function clearHighlight() {
+    if (highlightedElement) {
+        highlightedElement.classList.remove('tutorial-highlight');
+        highlightedElement = null;
+    }
+}
+
+function applyHighlight(selector) {
+    clearHighlight();
+    if (!selector) return;
+
+    const element = document.querySelector(selector);
+    if (!element) return;
+
+    element.classList.add('tutorial-highlight');
+    highlightedElement = element;
 }
 
 function updateStep() {
-    document.getElementById('tutorialText').textContent = steps[tutorialStep].text;
+    const step = steps[tutorialStep];
+    if (!step) return;
+
+    const titleEl = document.getElementById('tutorialTitle');
+    const textEl = document.getElementById('tutorialText');
+    const progressEl = document.getElementById('tutorialProgress');
+    const nextBtn = document.getElementById('tutorialNext');
+
+    if (titleEl) titleEl.textContent = step.title;
+    if (textEl) textEl.textContent = step.text;
+    if (progressEl) progressEl.textContent = `Step ${tutorialStep + 1} / ${steps.length}`;
+    if (nextBtn) {
+        nextBtn.textContent = tutorialStep === steps.length - 1 ? 'Start Mission' : 'Next';
+    }
+
+    applyHighlight(step.targetSelector || null);
 }
 
 export function updateTutorial() {
-    if (!tutorialActive) return;
-
-    const step = steps[tutorialStep];
-
-    if (step.check()) {
-        tutorialStep++;
-
-        if (tutorialStep >= steps.length) {
-            endTutorial();
-        } else {
-            updateStep();
-        }
-    }
+    // Kept for compatibility with main loop; tutorial progression is now manual.
 }
 
 function endTutorial() {
     tutorialActive = false;
-    document.getElementById('tutorialOverlay').style.display = 'none';
+    clearHighlight();
+
+    const overlay = document.getElementById('tutorialOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
 }
 
 export function isTutorialActive() {

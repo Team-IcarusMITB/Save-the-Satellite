@@ -1,5 +1,5 @@
 // ==================== SYSTEMS MODULE ====================
-import { checkEclipse } from './scene.js';
+import { checkEclipse, getManeuverPowerDraw } from './scene.js';
 
 // Battery parameters
 const CHARGE_RATE = 1.5; // % per frame in sunlight (at 60fps = 0.9% per second)
@@ -24,15 +24,18 @@ export function updateBattery(gameState) {
     if (gameState.systems.payload) systemDrain += SYSTEM_DRAIN_RATE;
     if (gameState.systems.camera) systemDrain += SYSTEM_DRAIN_RATE;
 
+    // Manual maneuvering consumes extra power.
+    const maneuverDrain = getManeuverPowerDraw();
+
     // Calculate battery change per frame (approximate for 60fps)
     let batteryChange = 0;
 
     if (isInSunlight) {
         // Charging in sunlight
-        batteryChange = CHARGE_RATE - systemDrain * 0.5; // Systems drain less in sunlight
+        batteryChange = CHARGE_RATE - (systemDrain * 0.5 + maneuverDrain * 0.6); // Controls cost less in sunlight but still consume power
     } else {
         // Draining in eclipse
-        batteryChange = -(DRAIN_RATE_ECLIPSE + systemDrain);
+        batteryChange = -(DRAIN_RATE_ECLIPSE + systemDrain + maneuverDrain);
     }
 
     // Apply battery change
@@ -43,7 +46,7 @@ export function updateBattery(gameState) {
     
     // Log battery updates every 60 calls (~1 second)
     if (batteryLogCounter % 60 === 0) {
-        console.log(`🔋 Battery: ${gameState.battery.toFixed(1)}% | ${isInSunlight ? '☀️ SUNLIGHT' : '🌑 ECLIPSE'} | Systems: ${Object.values(gameState.systems).filter(v => v).length} active`);
+        console.log(`🔋 Battery: ${gameState.battery.toFixed(1)}% | ${isInSunlight ? '☀️ SUNLIGHT' : '🌑 ECLIPSE'} | Systems: ${Object.values(gameState.systems).filter(v => v).length} active | Maneuver load: ${maneuverDrain.toFixed(2)}`);
     }
 }
 
@@ -53,6 +56,7 @@ export function calculateDrain(gameState) {
     if (gameState.systems.comms) totalDrain += SYSTEM_DRAIN_RATE;
     if (gameState.systems.payload) totalDrain += SYSTEM_DRAIN_RATE;
     if (gameState.systems.camera) totalDrain += SYSTEM_DRAIN_RATE;
+    totalDrain += getManeuverPowerDraw();
     return totalDrain;
 }
 

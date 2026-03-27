@@ -17,7 +17,7 @@ export function updateUI(gameState) {
     updateSystemButtons(gameState.systems);
 
     // Update fault display
-    updateFaultDisplay(gameState.faults);
+    updateFaultDisplay(gameState.faults, gameState.debris);
 
     // Update debris counter
     updateDebrisCounter(gameState.debris.count);
@@ -95,10 +95,14 @@ function updateSystemButtons(systems) {
 }
 
 // ==================== UPDATE FAULT DISPLAY ====================
-function updateFaultDisplay(faults) {
+function updateFaultDisplay(faults, debris) {
     const faultAlert = document.getElementById('faultAlert');
     const faultText = document.getElementById('faultText');
     const restartButton = document.getElementById('restartButton');
+
+    if (!faultAlert || !faultText || !restartButton) return;
+
+    faultAlert.classList.remove('active', 'incoming');
 
     if (faults.current) {
         // Show fault
@@ -115,10 +119,15 @@ function updateFaultDisplay(faults) {
         
         faultText.textContent = `⚠️ ${faults.current} - Fix in: ${timeRemaining}s`;
         restartButton.classList.remove('hidden');
+    } else if (debris && debris.warningDirection) {
+        // Only show debris direction warning when no critical fault is active.
+        faultAlert.classList.remove('hidden');
+        faultAlert.classList.add('incoming');
+        faultText.textContent = `🪨 Incoming asteroid from ${debris.warningDirection}`;
+        restartButton.classList.add('hidden');
     } else {
         // No active fault
         faultAlert.classList.add('hidden');
-        faultAlert.classList.remove('active');
         faultText.textContent = '✅ All Systems Nominal';
         restartButton.classList.add('hidden');
     }
