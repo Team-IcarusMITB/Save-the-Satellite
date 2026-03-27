@@ -60,7 +60,7 @@ console.log('THREE.js version:', typeof THREE !== 'undefined' ? 'LOADED' : 'NOT 
 console.log('Initial game state:', gameState);
 
 // ==================== IMPORTS ====================
-import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition } from './scene.js';
+import { initScene, getScene, getCamera, getRenderer, animateScene, getSatellitePosition, resetSatelliteOffset } from './scene.js';
 import { updateUI, setupUIListeners } from './ui.js';
 import { updateBattery, checkEclipse, calculateDrain } from './systems.js';
 import { updateFaults, generateRandomFault } from './faults.js';
@@ -252,6 +252,7 @@ function restartGame() {
 
     // Clear visual effects
     clearAllDebris();
+    resetSatelliteOffset();
 
     // Hide game over modal
     const modal = document.getElementById('gameOverModal');
@@ -281,6 +282,7 @@ document.addEventListener('DOMContentLoaded', init);
 // Toggle debug panel with L key
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'l') {
+        event.preventDefault();
         const debugPanel = document.getElementById('debugPanel');
         if (debugPanel) {
             debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';

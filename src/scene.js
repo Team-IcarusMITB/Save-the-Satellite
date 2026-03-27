@@ -20,17 +20,6 @@ let satelliteOffset = new THREE.Vector3(0, 0, 0);
 const SATELLITE_MANEUVER_SPEED = 0.02;
 let moonGroup;
 
-// Manual camera drag state
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let cameraTheta = Math.PI / 4;
-let cameraPhi = Math.PI / 4;
-let cameraRadius = 9;
-const CAMERA_MIN_RADIUS = 4;
-const CAMERA_MAX_RADIUS = 20;
-
-
 // ==================== SCENE INITIALIZATION ====================
 export function initScene() {
     // Create scene
@@ -66,6 +55,9 @@ export function initScene() {
     renderer.setPixelRatio(window.devicePixelRatio);
     
     // EXPLICITLY set canvas resolution to match display size
+    canvas.addEventListener('click', () => canvas.focus());
+    canvas.focus(); // grab focus on load
+    
     canvas.width = width;
     canvas.height = height;
     console.log(`📍 Canvas size AFTER: ${canvas.clientWidth}x${canvas.clientHeight}px (display) | ${canvas.width}x${canvas.height}px (actual)`);
@@ -96,16 +88,21 @@ export function initScene() {
     if (typeof THREE !== 'undefined' && THREE.OrbitControls) {
         orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
         orbitControls.enableDamping = true;
-        orbitControls.dampingFactor = 0.08;
+        orbitControls.dampingFactor = 0.05;
         orbitControls.enableZoom = true;
-        orbitControls.zoomSpeed = 1.2;
-        orbitControls.enableRotate = true; // Explicit enable
-        orbitControls.autoRotate = false; // Disable auto-rotate to allow user control
+        orbitControls.zoomSpeed = 1.0;
+        orbitControls.enableRotate = true;
+        orbitControls.autoRotate = false;
         orbitControls.target.set(0, 0, 0);
+        orbitControls.minDistance = 3;    // can't zoom inside Earth
+        orbitControls.maxDistance = 22;   // can't zoom to infinity
         orbitControls.update();
+
+        orbitControls.enableKeys = false; // stops OrbitControls eating arrow keys
+        
         console.log('✅ OrbitControls enabled - drag to rotate, scroll to zoom');
     } else {
-        console.warn('⚠️ OrbitControls not available - camera controls disabled');
+        console.warn('⚠️ OrbitControls not available');
     }
 
     // Handle window resize
@@ -113,9 +110,7 @@ export function initScene() {
 
     // Setup manual satellite maneuver controls
     setupManeuverControls();
-
-    // Setup manual camera dragging controls (fallback if OrbitControls not responsive)
-    setupManualCameraControl();
+    // NOTE: setupManualCameraControl() is intentionally removed
 
     console.log('✅ Three.js scene fully initialized');
     console.log('Scene children count:', scene.children.length);
@@ -234,57 +229,6 @@ function createStarfield() {
     const stars = getStarfield({ numStars: 2000 });
     scene.add(stars);
     console.log('✅ Starfield created');
-}
-
-function updateCameraFromSpherical() {
-    const x = cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta);
-    const y = cameraRadius * Math.cos(cameraPhi);
-    const z = cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta);
-    camera.position.set(x, y, z);
-    camera.lookAt(0, 0, 0);
-}
-
-function setupManualCameraControl() {
-    const canvas = renderer.domElement;
-
-    canvas.style.cursor = 'grab';
-
-    canvas.addEventListener('mousedown', (event) => {
-        isDragging = true;
-        dragStartX = event.clientX;
-        dragStartY = event.clientY;
-        canvas.style.cursor = 'grabbing';
-    });
-
-    canvas.addEventListener('mousemove', (event) => {
-        if (!isDragging) return;
-
-        const deltaX = event.clientX - dragStartX;
-        const deltaY = event.clientY - dragStartY;
-        dragStartX = event.clientX;
-        dragStartY = event.clientY;
-
-        cameraTheta -= deltaX * 0.005;
-        cameraPhi = Math.min(Math.max(0.1, cameraPhi - deltaY * 0.005), Math.PI - 0.1);
-
-        updateCameraFromSpherical();
-    });
-
-    const stopDrag = () => {
-        isDragging = false;
-        canvas.style.cursor = 'grab';
-    };
-    canvas.addEventListener('mouseup', stopDrag);
-    canvas.addEventListener('mouseleave', stopDrag);
-
-    canvas.addEventListener('wheel', (event) => {
-        cameraRadius = Math.min(Math.max(CAMERA_MIN_RADIUS, cameraRadius + event.deltaY * 0.01), CAMERA_MAX_RADIUS);
-        updateCameraFromSpherical();
-    }, { passive: true });
-
-    // set initial camera from spherical position
-    updateCameraFromSpherical();
-    console.log('✅ Manual camera drag controls set up (mousedown/drag + wheel zoom)');
 }
 
 // ==================== CREATE MOON ====================
@@ -454,6 +398,12 @@ export function checkEclipse() {
 function setupManeuverControls() {
     window.addEventListener('keydown', (event) => {
         const key = event.key.toLowerCase();
+        // prevents browser scroll on WASD/arrows
+        const controlledKeys = ['w', 's', 'a', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+        
+        if (controlledKeys.includes(key)) {
+            event.preventDefault();
+        }
         if (key === 'w' || key === 'arrowup') {
             satelliteOffset.z -= SATELLITE_MANEUVER_SPEED;
         }
@@ -547,4 +497,8 @@ export function getOrbitAngle() {
 
 export function getMoonPosition() {
     return moonMesh ? moonMesh.position.clone() : null;
+}
+
+export function resetSatelliteOffset() {
+    satelliteOffset.set(0, 0, 0);
 }
