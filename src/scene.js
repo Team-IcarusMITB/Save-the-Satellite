@@ -29,6 +29,17 @@ let satelliteOffset = new THREE.Vector3(0, 0, 0);
 const SATELLITE_MANEUVER_SPEED = 0.02;
 let moonGroup;
 
+// Player 1 orbit angle adjustment (for WASD movement)
+let player1OrbitAngleOffset = 0;
+const PLAYER1_ORBIT_ADJUSTMENT_SPEED = 0.005; // radians per ms (increased for faster movement)
+const PLAYER1_RADIUS_ADJUSTMENT_SPEED = 0.003; // per frame
+
+// Player 2 orbit angle adjustment (for gamepad movement)
+let player2OrbitAngleOffset = 0;
+let currentOrbitRadiusP2 = ORBIT_RADIUS_2; // Track Player 2's current orbit radius
+const PLAYER2_ORBIT_ADJUSTMENT_SPEED = 0.005; // radians per ms
+const PLAYER2_RADIUS_ADJUSTMENT_SPEED = 0.003; // per frame
+
 let satellitePrimary = null;
 let satelliteSecondary = null;
 
@@ -67,9 +78,11 @@ export function initScene() {
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     
-    // EXPLICITLY set canvas resolution to match display size
+    // Allow canvas to be clicked to focus
     canvas.addEventListener('click', () => canvas.focus());
-    canvas.focus(); // grab focus on load
+    
+    // Don't force focus on load - let window handle keyboard input
+    // canvas.focus() forces focus but may prevent keyboard input on some browsers
     
     canvas.width = width;
     canvas.height = height;
@@ -228,14 +241,30 @@ function createEarth() {
 
 // ==================== CREATE ORBIT PATHS ====================
 let orbitPath1, orbitPath2;
+let currentOrbitRadiusP1 = ORBIT_RADIUS; // Track Player 1's current orbit radius
+
 function createOrbitPaths() {
     // Primary orbit: dotted line
+    updateOrbitPath1Display(ORBIT_RADIUS);
+
+    // Secondary orbit: dotted line
+    updateOrbitPath2Display(ORBIT_RADIUS_2);
+}
+
+// Update orbit path 1 (Player 1) based on movement direction
+function updateOrbitPath1Display(radius) {
+    // Remove old path if exists
+    if (orbitPath1) {
+        scene.remove(orbitPath1);
+    }
+
+    currentOrbitRadiusP1 = radius;
     const points1 = [];
     const segments = 128;
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
-        const x = ORBIT_RADIUS * Math.cos(angle);
-        const z = ORBIT_RADIUS * Math.sin(angle);
+        const x = radius * Math.cos(angle);
+        const z = radius * Math.sin(angle);
         points1.push(new THREE.Vector3(x, 0, z));
     }
     const geom1 = new THREE.BufferGeometry().setFromPoints(points1);
@@ -250,13 +279,22 @@ function createOrbitPaths() {
     orbitPath1 = new THREE.Line(geom1, mat1);
     orbitPath1.computeLineDistances();
     scene.add(orbitPath1);
+}
 
-    // Secondary orbit: dotted line
+// Update orbit path 2 (Player 2) based on movement direction
+function updateOrbitPath2Display(radius) {
+    // Remove old path if exists
+    if (orbitPath2) {
+        scene.remove(orbitPath2);
+    }
+
+    currentOrbitRadiusP2 = radius;
     const points2 = [];
+    const segments = 128;
     for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
-        const x = ORBIT_RADIUS_2 * Math.cos(angle);
-        const z = ORBIT_RADIUS_2 * Math.sin(angle);
+        const x = radius * Math.cos(angle);
+        const z = radius * Math.sin(angle);
         points2.push(new THREE.Vector3(x, 0, z));
     }
     const geom2 = new THREE.BufferGeometry().setFromPoints(points2);
@@ -425,32 +463,32 @@ function createSatellite() {
 function updateSatellitePosition() {
     const elapsedTime = Date.now() - orbitStartTime;
 
-    currentOrbitAngle1 = (elapsedTime * ORBIT_SPEED) % (Math.PI * 2);
-    currentOrbitAngle2 = (elapsedTime * ORBIT_SPEED_2 + Math.PI * 0.5) % (Math.PI * 2);
+    currentOrbitAngle1 = (elapsedTime * ORBIT_SPEED + player1OrbitAngleOffset) % (Math.PI * 2);
+    currentOrbitAngle2 = (elapsedTime * ORBIT_SPEED_2 + player2OrbitAngleOffset + Math.PI * 0.5) % (Math.PI * 2);
 
-    // Primary satellite
-    const x1 = ORBIT_RADIUS * Math.cos(currentOrbitAngle1);
-    const z1 = ORBIT_RADIUS * Math.sin(currentOrbitAngle1);
-    const y1 = ORBIT_RADIUS * 0.15 * Math.sin(currentOrbitAngle1 * 0.8);
+    // Primary satellite (Player 1 - blue) - uses dynamic radius
+    const x1 = currentOrbitRadiusP1 * Math.cos(currentOrbitAngle1);
+    const z1 = currentOrbitRadiusP1 * Math.sin(currentOrbitAngle1);
+    const y1 = currentOrbitRadiusP1 * 0.15 * Math.sin(currentOrbitAngle1 * 0.8);
     const pos1 = new THREE.Vector3(x1, y1, z1).add(satelliteOffset);
     if (satellitePrimary) {
         satellitePrimary.position.copy(pos1);
         const nextAngle1 = (currentOrbitAngle1 + 0.02) % (Math.PI * 2);
-        const nextX1 = ORBIT_RADIUS * Math.cos(nextAngle1) + satelliteOffset.x;
-        const nextZ1 = ORBIT_RADIUS * Math.sin(nextAngle1) + satelliteOffset.z;
+        const nextX1 = currentOrbitRadiusP1 * Math.cos(nextAngle1) + satelliteOffset.x;
+        const nextZ1 = currentOrbitRadiusP1 * Math.sin(nextAngle1) + satelliteOffset.z;
         satellitePrimary.lookAt(nextX1, y1 + satelliteOffset.y, nextZ1);
     }
 
-    // Secondary satellite
-    const x2 = ORBIT_RADIUS_2 * Math.cos(currentOrbitAngle2);
-    const z2 = ORBIT_RADIUS_2 * Math.sin(currentOrbitAngle2);
-    const y2 = ORBIT_RADIUS_2 * 0.18 * Math.sin(currentOrbitAngle2 * 1.1);
+    // Secondary satellite (Player 2 - orange) - uses dynamic radius
+    const x2 = currentOrbitRadiusP2 * Math.cos(currentOrbitAngle2);
+    const z2 = currentOrbitRadiusP2 * Math.sin(currentOrbitAngle2);
+    const y2 = currentOrbitRadiusP2 * 0.18 * Math.sin(currentOrbitAngle2 * 1.1);
     const pos2 = new THREE.Vector3(x2, y2, z2);
     if (satelliteSecondary) {
         satelliteSecondary.position.copy(pos2);
         const nextAngle2 = (currentOrbitAngle2 + 0.02) % (Math.PI * 2);
-        const nextX2 = ORBIT_RADIUS_2 * Math.cos(nextAngle2);
-        const nextZ2 = ORBIT_RADIUS_2 * Math.sin(nextAngle2);
+        const nextX2 = currentOrbitRadiusP2 * Math.cos(nextAngle2);
+        const nextZ2 = currentOrbitRadiusP2 * Math.sin(nextAngle2);
         satelliteSecondary.lookAt(nextX2, y2, nextZ2);
     }
 
@@ -675,6 +713,112 @@ export function getMoonPosition() {
 
 export function resetSatelliteOffset() {
     satelliteOffset.set(0, 0, 0);
+}
+
+export function adjustPlayer1OrbitAngle(direction) {
+    // direction: 'clockwise' (+) | 'counterclockwise' (-)
+    const adjustment = direction === 'clockwise' ? PLAYER1_ORBIT_ADJUSTMENT_SPEED : -PLAYER1_ORBIT_ADJUSTMENT_SPEED;
+    player1OrbitAngleOffset += adjustment;
+}
+
+export function resetPlayer1OrbitOffset() {
+    player1OrbitAngleOffset = 0;
+}
+
+// Get satellite position with direction offset for boost animation
+export function getPlayer1BoostAnimationOffset(direction) {
+    // Returns offset direction for boost particle effect based on WASD key
+    // direction: 'forward', 'left', 'backward', 'right'
+    const satPos = satellitePrimary ? satellitePrimary.position.clone() : new THREE.Vector3(0, 0, 0);
+    const normDir = satPos.clone().normalize();
+    
+    switch(direction) {
+        case 'forward':
+        case 'left':
+            // Counterclockwise: boost on the direction perpendicular to radius (tangent)
+            return new THREE.Vector3(-normDir.z, 0, normDir.x).multiplyScalar(0.3);
+        case 'backward':
+        case 'right':
+            // Clockwise: boost opposite direction
+            return new THREE.Vector3(normDir.z, 0, -normDir.x).multiplyScalar(0.3);
+        default:
+            return new THREE.Vector3(0, 0, 0);
+    }
+}
+
+// Update orbit radius for Player 1 based on movement
+export function updatePlayer1OrbitRadius(direction) {
+    // W/A: Inner orbit (decrease radius), S/D: Outer orbit (increase radius)
+    const minRadius = 1.2;
+    const maxRadius = 2.8;
+    
+    if (direction === 'counterclockwise') {
+        // W/A: Move to inner orbit
+        const newRadius = Math.max(minRadius, currentOrbitRadiusP1 - PLAYER1_RADIUS_ADJUSTMENT_SPEED);
+        updateOrbitPath1Display(newRadius);
+    } else if (direction === 'clockwise') {
+        // S/D: Move to outer orbit
+        const newRadius = Math.min(maxRadius, currentOrbitRadiusP1 + PLAYER1_RADIUS_ADJUSTMENT_SPEED);
+        updateOrbitPath1Display(newRadius);
+    }
+}
+
+export function resetPlayer1OrbitRadius() {
+    updateOrbitPath1Display(ORBIT_RADIUS);
+}
+
+export function adjustPlayer2OrbitAngle(direction) {
+    // direction: 'clockwise' (+) | 'counterclockwise' (-)
+    const adjustment = direction === 'clockwise' ? PLAYER2_ORBIT_ADJUSTMENT_SPEED : -PLAYER2_ORBIT_ADJUSTMENT_SPEED;
+    player2OrbitAngleOffset += adjustment;
+}
+
+export function resetPlayer2OrbitOffset() {
+    player2OrbitAngleOffset = 0;
+}
+
+// Get satellite position with direction offset for boost animation
+export function getPlayer2BoostAnimationOffset(direction) {
+    // Returns offset direction for boost particle effect based on gamepad input
+    // direction: 'forward', 'left', 'backward', 'right', or 'up'/'down' from analog stick
+    const satPos = satelliteSecondary ? satelliteSecondary.position.clone() : new THREE.Vector3(0, 0, 0);
+    const normDir = satPos.clone().normalize();
+    
+    switch(direction) {
+        case 'forward':
+        case 'left':
+        case 'up':
+            // Counterclockwise: boost on the direction perpendicular to radius (tangent)
+            return new THREE.Vector3(-normDir.z, 0, normDir.x).multiplyScalar(0.3);
+        case 'backward':
+        case 'right':
+        case 'down':
+            // Clockwise: boost opposite direction
+            return new THREE.Vector3(normDir.z, 0, -normDir.x).multiplyScalar(0.3);
+        default:
+            return new THREE.Vector3(0, 0, 0);
+    }
+}
+
+// Update orbit radius for Player 2 based on movement
+export function updatePlayer2OrbitRadius(direction) {
+    // Up/Left: Inner orbit (decrease radius), Down/Right: Outer orbit (increase radius)
+    const minRadius = 0.8;
+    const maxRadius = 2.4;
+    
+    if (direction === 'counterclockwise') {
+        // Up/Left: Move to inner orbit
+        const newRadius = Math.max(minRadius, currentOrbitRadiusP2 - PLAYER2_RADIUS_ADJUSTMENT_SPEED);
+        updateOrbitPath2Display(newRadius);
+    } else if (direction === 'clockwise') {
+        // Down/Right: Move to outer orbit
+        const newRadius = Math.min(maxRadius, currentOrbitRadiusP2 + PLAYER2_RADIUS_ADJUSTMENT_SPEED);
+        updateOrbitPath2Display(newRadius);
+    }
+}
+
+export function resetPlayer2OrbitRadius() {
+    updateOrbitPath2Display(ORBIT_RADIUS_2);
 }
 
 // Export solar burst function for game logic (resetSolarBurst is already exported on declaration)

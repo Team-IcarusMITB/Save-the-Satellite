@@ -2,14 +2,17 @@
 import { checkEclipse } from './scene.js';
 
 // Battery parameters
-const CHARGE_RATE = 1.5; // % per frame in sunlight (at 60fps = 0.9% per second)
+const CHARGE_RATE = 5; // % per frame in sunlight (at 60fps = 0.9% per second)
 const DRAIN_RATE_ECLIPSE = 2.0; // % per frame in eclipse
-const SYSTEM_DRAIN_RATE = 0.8; // % per frame per active system
 
-// Boost parameters
-const BOOST_DRAIN_RATE = 8.0; // % battery per second when boosting
-const HEAT_GENERATION_RATE = 15.0; // % heat per second when boosting
-const HEAT_DISSIPATION_RATE = 5.0; // % heat per second dissipation
+// Movement and Boost parameters
+const MOVEMENT_DRAIN_RATE = 5.0; // % battery per second when moving (reduced from 8%)
+const BOOST_DRAIN_RATE = 12.0; // % battery per second when boosting (reduced from 20%)
+
+// Heat generation and dissipation
+const MOVEMENT_HEAT_GENERATION = 8.0; // % heat per second from WASD/gamepad movement
+const BOOST_HEAT_GENERATION = 20.0; // % heat per second when boosting
+const HEAT_DISSIPATION_RATE = 3.0; // % heat per second dissipation (when idle)
 
 let lastUpdateTime = Date.now();
 
@@ -23,19 +26,15 @@ export function updateBattery(gameState) {
 
     const { litByLight } = checkEclipse();
 
-    // Calculate drain from active systems
-    let systemDrain = 0;
-    if (gameState.systems.payload) systemDrain += SYSTEM_DRAIN_RATE;
-
     // Calculate base battery change (same for both players)
     let baseBatteryChange = 0;
 
     if (litByLight) {
         // Charging in sunlight
-        baseBatteryChange = CHARGE_RATE - systemDrain * 0.5;
+        baseBatteryChange = CHARGE_RATE;
     } else {
         // Draining in eclipse
-        baseBatteryChange = -(DRAIN_RATE_ECLIPSE + systemDrain);
+        baseBatteryChange = -DRAIN_RATE_ECLIPSE;
     }
 
     // Update Player 1 battery
@@ -43,13 +42,19 @@ export function updateBattery(gameState) {
     if (gameState.boost.player1.active && gameState.battery.player1 > 0) {
         p1BatteryChange -= BOOST_DRAIN_RATE;
     }
+    if (gameState.movement.player1.active && gameState.battery.player1 > 0) {
+        p1BatteryChange -= MOVEMENT_DRAIN_RATE;
+    }
     gameState.battery.player1 += p1BatteryChange * deltaTime;
     gameState.battery.player1 = Math.max(0, Math.min(100, gameState.battery.player1));
 
-    // Update Player 2 battery
+    // Update Player 2 battery (NOW PROPERLY TRACKED)
     let p2BatteryChange = baseBatteryChange;
     if (gameState.boost.player2.active && gameState.battery.player2 > 0) {
         p2BatteryChange -= BOOST_DRAIN_RATE;
+    }
+    if (gameState.movement.player2.active && gameState.battery.player2 > 0) {
+        p2BatteryChange -= MOVEMENT_DRAIN_RATE;
     }
     gameState.battery.player2 += p2BatteryChange * deltaTime;
     gameState.battery.player2 = Math.max(0, Math.min(100, gameState.battery.player2));
@@ -68,15 +73,32 @@ export function updateBattery(gameState) {
 // ==================== UPDATE HEAT ====================
 function updateHeat(gameState, player, deltaTime) {
     const isBoostActive = player === 'player1' ? gameState.boost.player1.active : gameState.boost.player2.active;
+    const isMovementActive = player === 'player1' ? gameState.movement.player1.active : gameState.movement.player2.active;
     const battery = player === 'player1' ? gameState.battery.player1 : gameState.battery.player2;
     
-    if (isBoostActive && battery > 0) {
-        // Generate heat when boosting
-        gameState.heat[player] += HEAT_GENERATION_RATE * deltaTime;
-    } else {
-        // Dissipate heat when not boosting
-        gameState.heat[player] -= HEAT_DISSIPATION_RATE * deltaTime;
+    let heatChange = 0;
+    
+    if (battery > 0) {
+        // Generate heat from boost
+        if (isBoostActive) {
+            heatChange += BOOST_HEAT_GENERATION * deltaTime;
+        }
+        
+        // Generate heat from movement
+        if (isMovementActive) {
+            heatChange += MOVEMENT_HEAT_GENERATION * deltaTime;
+        }
     }
+    
+    // Dissipate heat when no activities
+    if (!isBoostActive && !isMovementActive) {
+        heatChange -= HEAT_DISSIPATION_RATE * deltaTime;
+    } else if (heatChange < 0) {
+        // Slower dissipation when active with no boost (just movement or idle state)
+        heatChange *= 0.5;
+    }
+    
+    gameState.heat[player] += heatChange;
 
     // Clamp heat between 0 and max
     gameState.heat[player] = Math.max(0, Math.min(gameState.heat.maxHeat, gameState.heat[player]));

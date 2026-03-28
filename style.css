@@ -113,10 +113,10 @@ body {
 
 .heat-bar-hud {
     flex: 1;
-    height: 3px;
-    background-color: rgba(0, 0, 0, 0.3);
-    border: none;
-    border-radius: 2px;
+    height: 15px;
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 107, 53, 0.6);
+    border-radius: 3px;
     overflow: hidden;
     position: relative;
     margin-top: 2px;
@@ -125,20 +125,20 @@ body {
 .heat-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #ff4400 0%, #ff7700 100%);
-    box-shadow: 0 0 4px rgba(255, 68, 0, 0.8);
+    background: linear-gradient(90deg, #ff6b35 0%, #ff9500 100%);
+    box-shadow: 0 0 6px rgba(255, 107, 53, 0.9), inset 0 0 3px rgba(255, 255, 255, 0.2);
     transition: width 0.15s ease;
 }
 
 .heat-fill.critical {
     background: linear-gradient(90deg, #ff0000 0%, #ff4400 100%);
-    box-shadow: 0 0 8px rgba(255, 0, 0, 0.9);
-    animation: heat-critical 0.5s infinite alternate;
+    box-shadow: 0 0 10px rgba(255, 0, 0, 1), inset 0 0 3px rgba(255, 100, 100, 0.3);
+    animation: heat-critical 0.4s infinite alternate;
 }
 
 @keyframes heat-critical {
-    from { box-shadow: 0 0 8px rgba(255, 0, 0, 0.9); }
-    to { box-shadow: 0 0 15px rgba(255, 0, 0, 1); }
+    from { box-shadow: 0 0 10px rgba(255, 0, 0, 1), inset 0 0 3px rgba(255, 100, 100, 0.3); }
+    to { box-shadow: 0 0 20px rgba(255, 0, 0, 1), inset 0 0 3px rgba(255, 150, 100, 0.5); }
 }
 
 /* PvP Player Panels */

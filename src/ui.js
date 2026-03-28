@@ -18,10 +18,7 @@ export function updateUI(gameState) {
     updateSolarBurstIndicator(gameState.solarBurst);
 
     // Update survival time
-    updateSurvivalTime(gameState.survivalTime);
-
-    // Update fault display
-    updateFaultDisplay(gameState.faults);
+    updateSurvivalTime(gameState.survivalTime, gameState.survivalTimeMax);
 
     // Update debris counter
     updateDebrisCounter(gameState.debris.count);
@@ -62,8 +59,8 @@ function updateHeatDisplay(heat, maxHeat, player) {
     const heatPercent = (heat / maxHeat) * 100;
     heatBar.style.width = heatPercent + '%';
 
-    // Update heat bar color - critical at high temps
-    if (heatPercent > 80) {
+    // Update heat bar color - critical at 70% threshold
+    if (heatPercent > 70) {
         heatBar.classList.add('critical');
     } else {
         heatBar.classList.remove('critical');
@@ -107,9 +104,12 @@ function updateSolarBurstIndicator(solarBurst) {
 }
 
 // ==================== UPDATE SURVIVAL TIME ====================
-function updateSurvivalTime(survivalTime) {
+function updateSurvivalTime(survivalTime, maxTime) {
     const survivalTimeElement = document.getElementById('survivalTime');
-    survivalTimeElement.textContent = survivalTime + 's';
+    if (survivalTimeElement) {
+        const timeRemaining = Math.max(0, maxTime - survivalTime);
+        survivalTimeElement.textContent = `${survivalTime}s / ${maxTime}s`;
+    }
 }
 
 // ==================== UPDATE SYSTEM BUTTONS ====================
@@ -130,25 +130,6 @@ function updateSystemButtons(systems) {
     }
 }
 
-// ==================== UPDATE FAULT DISPLAY ====================
-function updateFaultDisplay(faults) {
-    const faultText = document.getElementById('faultText');
-
-    if (!faultText) return;
-
-    if (faults.current) {
-        let timeRemaining = 'N/A';
-        if (faults.timer) {
-            const elapsed = Date.now() - faults.timer;
-            const remaining = Math.max(0, faults.maxTime - elapsed);
-            timeRemaining = (remaining / 1000).toFixed(1);
-        }
-        faultText.textContent = `⚠️ ${faults.current} - Fix: ${timeRemaining}s`;
-    } else {
-        faultText.textContent = '✅ All Systems Nominal';
-    }
-}
-
 // ==================== UPDATE DEBRIS COUNTER ====================
 function updateDebrisCounter(count) {
     // Debris counter is optional - can be displayed in a separate UI element if needed
@@ -157,24 +138,5 @@ function updateDebrisCounter(count) {
 
 // ==================== SETUP UI LISTENERS ====================
 export function setupUIListeners(gameState) {
-    // Payload toggle
-    const payloadToggle = document.getElementById('payloadToggle');
-    if (payloadToggle) {
-        payloadToggle.addEventListener('click', () => {
-            gameState.systems.payload = !gameState.systems.payload;
-            updateUI(gameState);
-        });
-    }
-
-    // Restart system button (for faults)
-    const restartButton = document.getElementById('restartButton');
-    if (restartButton) {
-        restartButton.addEventListener('click', () => {
-            gameState.faults.current = null;
-            gameState.faults.timer = null;
-            updateUI(gameState);
-        });
-    }
-
     console.log('✅ HUD listeners setup complete');
 }
