@@ -1,20 +1,24 @@
-console.log('📍 ui.js module loading...');
+// UI module
 
 // ==================== UI MODULE ====================
 
 // ==================== UPDATE UI ====================
 export function updateUI(gameState) {
-    // Update battery bar
-    updateBatteryDisplay(gameState.battery);
+    // Update Player 1
+    updateBatteryDisplay(gameState.battery.player1, 'P1');
+    updateHeatDisplay(gameState.heat.player1, gameState.heat.maxHeat, 'P1');
+    updateStatusIndicator(gameState.player1.litByLight, 'P1');
 
-    // Update status indicator (sunlight/eclipse)
-    updateStatusIndicator(gameState.isInSunlight);
+    // Update Player 2
+    updateBatteryDisplay(gameState.battery.player2, 'P2');
+    updateHeatDisplay(gameState.heat.player2, gameState.heat.maxHeat, 'P2');
+    updateStatusIndicator(gameState.player2.litByLight, 'P2');
+
+    // Update solar burst status
+    updateSolarBurstIndicator(gameState.solarBurst);
 
     // Update survival time
     updateSurvivalTime(gameState.survivalTime);
-
-    // Update system button states
-    updateSystemButtons(gameState.systems);
 
     // Update fault display
     updateFaultDisplay(gameState.faults);
@@ -24,9 +28,11 @@ export function updateUI(gameState) {
 }
 
 // ==================== UPDATE BATTERY DISPLAY ====================
-function updateBatteryDisplay(battery) {
-    const batteryPercent = document.getElementById('batteryPercent');
-    const batteryBar = document.getElementById('batteryBar');
+function updateBatteryDisplay(battery, player) {
+    const batteryPercent = document.getElementById(`batteryPercent${player}`);
+    const batteryBar = document.getElementById(`batteryBar${player}`);
+
+    if (!batteryPercent || !batteryBar) return;
 
     // Update percentage text
     batteryPercent.textContent = Math.round(battery) + '%';
@@ -45,18 +51,58 @@ function updateBatteryDisplay(battery) {
     }
 }
 
-// ==================== UPDATE STATUS INDICATOR ====================
-function updateStatusIndicator(isInSunlight) {
-    const statusIndicator = document.getElementById('statusIndicator');
+// ==================== UPDATE HEAT DISPLAY ====================
+function updateHeatDisplay(heat, maxHeat, player) {
+    const heatBar = document.getElementById(`heatBar${player}`);
 
-    if (isInSunlight) {
-        statusIndicator.textContent = '☀️ Sunlit (solar exposure)';
-        statusIndicator.classList.remove('eclipse');
-        statusIndicator.classList.add('sunlight');
+    if (!heatBar) {
+        return;
+    }
+
+    const heatPercent = (heat / maxHeat) * 100;
+    heatBar.style.width = heatPercent + '%';
+
+    // Update heat bar color - critical at high temps
+    if (heatPercent > 80) {
+        heatBar.classList.add('critical');
     } else {
-        statusIndicator.textContent = '🌘 Earth Shadow (solar blocked)';
-        statusIndicator.classList.remove('sunlight');
+        heatBar.classList.remove('critical');
+    }
+}
+
+// ==================== UPDATE STATUS INDICATOR ====================
+function updateStatusIndicator(litByLight, player) {
+    const statusIndicator = document.getElementById(`statusIndicator${player}`);
+
+    if (!statusIndicator) {
+        return;
+    }
+
+    if (litByLight) {
+        statusIndicator.textContent = '☀️ SUNLIT';
+        statusIndicator.classList.remove('eclipse');
+        statusIndicator.classList.add('sunlit');
+    } else {
+        statusIndicator.textContent = '🌘 ECLIPSE';
+        statusIndicator.classList.remove('sunlit');
         statusIndicator.classList.add('eclipse');
+    }
+}
+
+// ==================== UPDATE SOLAR BURST STATUS ====================
+function updateSolarBurstIndicator(solarBurst) {
+    const solarIndicator = document.getElementById('solarBurstIndicator');
+
+    if (!solarIndicator) return;
+
+    if (solarBurst.active) {
+        solarIndicator.textContent = `🌩️ Solar Flare Active! (${solarBurst.timeRemaining.toFixed(1)}ms)`;
+        solarIndicator.classList.add('solar-active');
+        solarIndicator.classList.remove('solar-ready');
+    } else {
+        solarIndicator.textContent = `☀️ Next flare: ${(solarBurst.nextBurstIn / 1000).toFixed(1)}s`;
+        solarIndicator.classList.remove('solar-active');
+        solarIndicator.classList.add('solar-ready');
     }
 }
 
@@ -68,118 +114,67 @@ function updateSurvivalTime(survivalTime) {
 
 // ==================== UPDATE SYSTEM BUTTONS ====================
 function updateSystemButtons(systems) {
-    const commToggle = document.getElementById('commToggle');
     const payloadToggle = document.getElementById('payloadToggle');
-    const cameraToggle = document.getElementById('cameraToggle');
 
-    // Update communications button
-    if (systems.comms) {
-        commToggle.classList.add('active');
-    } else {
-        commToggle.classList.remove('active');
-    }
+    if (!payloadToggle) return;
 
     // Update payload button
     if (systems.payload) {
         payloadToggle.classList.add('active');
+        payloadToggle.textContent = '📦 ACTIVE';
+        payloadToggle.classList.remove('inactive');
     } else {
         payloadToggle.classList.remove('active');
-    }
-
-    // Update camera button
-    if (systems.camera) {
-        cameraToggle.classList.add('active');
-    } else {
-        cameraToggle.classList.remove('active');
+        payloadToggle.textContent = '📦 INACTIVE';
+        payloadToggle.classList.add('inactive');
     }
 }
 
 // ==================== UPDATE FAULT DISPLAY ====================
 function updateFaultDisplay(faults) {
-    const faultAlert = document.getElementById('faultAlert');
     const faultText = document.getElementById('faultText');
-    const restartButton = document.getElementById('restartButton');
+
+    if (!faultText) return;
 
     if (faults.current) {
-        // Show fault
-        faultAlert.classList.remove('hidden');
-        faultAlert.classList.add('active');
-        
-        // Calculate time remaining
         let timeRemaining = 'N/A';
         if (faults.timer) {
             const elapsed = Date.now() - faults.timer;
             const remaining = Math.max(0, faults.maxTime - elapsed);
             timeRemaining = (remaining / 1000).toFixed(1);
         }
-        
-        faultText.textContent = `⚠️ ${faults.current} - Fix in: ${timeRemaining}s`;
-        restartButton.classList.remove('hidden');
+        faultText.textContent = `⚠️ ${faults.current} - Fix: ${timeRemaining}s`;
     } else {
-        // No active fault
-        faultAlert.classList.add('hidden');
-        faultAlert.classList.remove('active');
         faultText.textContent = '✅ All Systems Nominal';
-        restartButton.classList.add('hidden');
     }
 }
 
 // ==================== UPDATE DEBRIS COUNTER ====================
 function updateDebrisCounter(count) {
-    // Create element if it doesn't exist
-    let debrisDisplay = document.getElementById('debrisCounter');
-    if (!debrisDisplay) {
-        debrisDisplay = document.createElement('div');
-        debrisDisplay.id = 'debrisCounter';
-        debrisDisplay.style.cssText = `
-            margin-top: 20px;
-            padding: 12px;
-            background-color: rgba(255, 107, 107, 0.1);
-            border: 1px solid rgba(255, 107, 107, 0.3);
-            border-radius: 8px;
-            font-size: 14px;
-            text-align: center;
-        `;
-        const faultsSection = document.querySelector('.faults-section');
-        if (faultsSection) {
-            faultsSection.appendChild(debrisDisplay);
-        }
-    }
-    
-    if (count > 0) {
-        debrisDisplay.innerHTML = `<strong>⚠️ ${count} Debris Pieces</strong><br><span style="font-size: 12px; color: #ffaa00;">Avoid collision!</span>`;
-        debrisDisplay.style.borderColor = 'rgba(255, 170, 0, 0.6)';
-    } else {
-        debrisDisplay.innerHTML = '<span style="color: #888;">No debris detected</span>';
-        debrisDisplay.style.borderColor = 'rgba(255, 107, 107, 0.3)';
-    }
+    // Debris counter is optional - can be displayed in a separate UI element if needed
+    // For now, it's handled in the game state
 }
 
 // ==================== SETUP UI LISTENERS ====================
 export function setupUIListeners(gameState) {
-    // Communications toggle
-    document.getElementById('commToggle').addEventListener('click', () => {
-        gameState.systems.comms = !gameState.systems.comms;
-        console.log(`Communications: ${gameState.systems.comms ? 'ON' : 'OFF'}`);
-    });
-
     // Payload toggle
-    document.getElementById('payloadToggle').addEventListener('click', () => {
-        gameState.systems.payload = !gameState.systems.payload;
-        console.log(`Payload: ${gameState.systems.payload ? 'ON' : 'OFF'}`);
-    });
+    const payloadToggle = document.getElementById('payloadToggle');
+    if (payloadToggle) {
+        payloadToggle.addEventListener('click', () => {
+            gameState.systems.payload = !gameState.systems.payload;
+            updateUI(gameState);
+        });
+    }
 
-    // Camera toggle
-    document.getElementById('cameraToggle').addEventListener('click', () => {
-        gameState.systems.camera = !gameState.systems.camera;
-        console.log(`Camera: ${gameState.systems.camera ? 'ON' : 'OFF'}`);
-    });
+    // Restart system button (for faults)
+    const restartButton = document.getElementById('restartButton');
+    if (restartButton) {
+        restartButton.addEventListener('click', () => {
+            gameState.faults.current = null;
+            gameState.faults.timer = null;
+            updateUI(gameState);
+        });
+    }
 
-    // Restart system button
-    document.getElementById('restartButton').addEventListener('click', () => {
-        gameState.faults.current = null;
-        console.log('System restarted');
-    });
-
-    console.log('✅ UI listeners setup complete');
+    console.log('✅ HUD listeners setup complete');
 }

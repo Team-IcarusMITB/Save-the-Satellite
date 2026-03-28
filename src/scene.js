@@ -8,17 +8,30 @@ import getStarfield from './getStarfield.js';
 let scene, camera, renderer, earthGroup, satellite, sunLight, loader, orbitControls;
 
 // Orbit parameters
-const ORBIT_RADIUS = 3.5; // Closer to Earth
+const ORBIT_RADIUS = 2.1; // smaller primary orbit radius
+const ORBIT_RADIUS_2 = 1.6; // smaller secondary orbit radius
 const EARTH_RADIUS = 1;
 const SATELLITE_SIZE = 0.3;
-const ORBIT_SPEED = 0.0005; // radians per millisecond
+const ORBIT_SPEED = 0.000575; // primary orbit speed (radians per ms)
+const ORBIT_SPEED_2 = 0.00069; // secondary orbit speed a bit faster
 
-let currentOrbitAngle = 0;
+// Sun parameters (faster than satellite)
+const SUN_ORBIT_RADIUS = 15;
+const SUN_SPEED = 0.00138; // ~15% faster
+
+let currentOrbitAngle1 = 0;
+let currentOrbitAngle2 = Math.PI;
 let orbitStartTime = Date.now();
+let sunAngle = 0;
+let sunMesh;
 let earthMesh, lightsMesh, cloudsMesh, moonMesh;
 let satelliteOffset = new THREE.Vector3(0, 0, 0);
 const SATELLITE_MANEUVER_SPEED = 0.02;
 let moonGroup;
+
+let satellitePrimary = null;
+let satelliteSecondary = null;
+
 
 // ==================== SCENE INITIALIZATION ====================
 export function initScene() {
@@ -207,21 +220,94 @@ function createEarth() {
     glowMesh.scale.setScalar(1.01);
     earthGroup.add(glowMesh);
 
+    // Add orbit paths around Earth for satellites
+    createOrbitPaths();
+
     console.log('✅ Earth created with premium multi-layer textures');
+}
+
+// ==================== CREATE ORBIT PATHS ====================
+let orbitPath1, orbitPath2;
+function createOrbitPaths() {
+    // Primary orbit: dotted line
+    const points1 = [];
+    const segments = 128;
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        const x = ORBIT_RADIUS * Math.cos(angle);
+        const z = ORBIT_RADIUS * Math.sin(angle);
+        points1.push(new THREE.Vector3(x, 0, z));
+    }
+    const geom1 = new THREE.BufferGeometry().setFromPoints(points1);
+    const mat1 = new THREE.LineDashedMaterial({
+        color: 0xcccc00,
+        dashSize: 0.2,
+        gapSize: 0.1,
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.85
+    });
+    orbitPath1 = new THREE.Line(geom1, mat1);
+    orbitPath1.computeLineDistances();
+    scene.add(orbitPath1);
+
+    // Secondary orbit: dotted line
+    const points2 = [];
+    for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        const x = ORBIT_RADIUS_2 * Math.cos(angle);
+        const z = ORBIT_RADIUS_2 * Math.sin(angle);
+        points2.push(new THREE.Vector3(x, 0, z));
+    }
+    const geom2 = new THREE.BufferGeometry().setFromPoints(points2);
+    const mat2 = new THREE.LineDashedMaterial({
+        color: 0xff7f0f,
+        dashSize: 0.2,
+        gapSize: 0.1,
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.85
+    });
+    orbitPath2 = new THREE.Line(geom2, mat2);
+    orbitPath2.computeLineDistances();
+    scene.add(orbitPath2);
 }
 
 // ==================== CREATE LIGHTING ====================
 function createLighting() {
-    // Sun light (main directional light) - positioned from upper left
-    sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
-    sunLight.position.set(-2, 0.5, 1.5);
-    scene.add(sunLight);
+    createSun();
 
     // Ambient light for overall illumination
-    const ambientLight = new THREE.AmbientLight(0x333366, 0.6);
+    const ambientLight = new THREE.AmbientLight(0x333366, 0.45);
     scene.add(ambientLight);
 
     console.log('✅ Lighting created');
+}
+
+// ==================== CREATE SUN ====================
+function createSun() {
+    sunLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    sunLight.position.set(SUN_ORBIT_RADIUS, 0, 0);
+    sunLight.castShadow = true;
+    sunLight.shadow.bias = -0.0001;
+    scene.add(sunLight);
+
+    // Visible sun object (for camera POV)
+    const sunGeometry = new THREE.SphereGeometry(0.8, 24, 24);
+    const sunMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffe68a,
+        emissive: 0xffa500,
+        emissiveIntensity: 2,
+        map: loader ? loader.load('./public/textures/03_earthlights1k.jpg') : null,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide
+    });
+    sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+    sunMesh.position.copy(sunLight.position);
+    scene.add(sunMesh);
+
+    console.log('☀️ Sun created with orbit radius', SUN_ORBIT_RADIUS);
 }
 
 // ==================== CREATE STARFIELD ====================
@@ -277,14 +363,12 @@ function createMoon() {
 }
 
 // ==================== CREATE SATELLITE ====================
-function createSatellite() {
-    // Create a satellite group
+function createSatelliteModel(colorBody = 0x333333, colorPanel = 0x1a1a4d) {
     const satGroup = new THREE.Group();
 
-    // Main body (central cube) - using MeshStandardMaterial for metalness/roughness support
     const bodyGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.4);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x333333,
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: colorBody,
         metalness: 0.8,
         roughness: 0.2
     });
@@ -293,10 +377,9 @@ function createSatellite() {
     body.receiveShadow = true;
     satGroup.add(body);
 
-    // Solar panels (left)
     const panelGeometry = new THREE.BoxGeometry(0.15, 0.35, 0.05);
-    const panelMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x1a1a4d,
+    const panelMaterial = new THREE.MeshPhongMaterial({
+        color: colorPanel,
         emissive: 0x0a0a3d,
         shininess: 100
     });
@@ -306,16 +389,14 @@ function createSatellite() {
     leftPanel.receiveShadow = true;
     satGroup.add(leftPanel);
 
-    // Solar panels (right)
     const rightPanel = new THREE.Mesh(panelGeometry, panelMaterial);
     rightPanel.position.x = 0.25;
     rightPanel.castShadow = true;
     rightPanel.receiveShadow = true;
     satGroup.add(rightPanel);
 
-    // Antenna (small cylinder on top)
     const antennaGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.2, 8);
-    const antennaMaterial = new THREE.MeshPhongMaterial({ 
+    const antennaMaterial = new THREE.MeshPhongMaterial({
         color: 0xffaa00,
         shininess: 100
     });
@@ -325,74 +406,148 @@ function createSatellite() {
     antenna.receiveShadow = true;
     satGroup.add(antenna);
 
-    satellite = satGroup;
-    scene.add(satellite);
+    return satGroup;
+}
 
-    // Set initial position
+function createSatellite() {
+    satellitePrimary = createSatelliteModel(0x0066cc, 0x0088ff); // blue satellite (Player 1)
+    satelliteSecondary = createSatelliteModel(0xff6a13, 0xffa040); // orange satellite (Player 2)
+
+    scene.add(satellitePrimary);
+    scene.add(satelliteSecondary);
+
     updateSatellitePosition();
 
-    console.log('✅ Satellite created with body, solar panels, and antenna');
+    console.log('✅ Two satellites created in orbit');
 }
 
 // ==================== UPDATE SATELLITE POSITION ====================
 function updateSatellitePosition() {
-    // Calculate orbit angle based on elapsed time
     const elapsedTime = Date.now() - orbitStartTime;
-    currentOrbitAngle = (elapsedTime * ORBIT_SPEED) % (Math.PI * 2);
 
-    // Calculate satellite position using parametric circle equation
-    const x = ORBIT_RADIUS * Math.cos(currentOrbitAngle);
-    const z = ORBIT_RADIUS * Math.sin(currentOrbitAngle);
-    const y = ORBIT_RADIUS * 0.2 * Math.sin(currentOrbitAngle * 0.5); // Slight vertical wobble for visual interest
+    currentOrbitAngle1 = (elapsedTime * ORBIT_SPEED) % (Math.PI * 2);
+    currentOrbitAngle2 = (elapsedTime * ORBIT_SPEED_2 + Math.PI * 0.5) % (Math.PI * 2);
 
-    const position = new THREE.Vector3(x, y, z).add(satelliteOffset);
-    satellite.position.copy(position);
-
-    // Orient satellite to face direction of movement
-    const nextAngle = (currentOrbitAngle + 0.01) % (Math.PI * 2);
-    const nextX = ORBIT_RADIUS * Math.cos(nextAngle) + satelliteOffset.x;
-    const nextZ = ORBIT_RADIUS * Math.sin(nextAngle) + satelliteOffset.z;
-    satellite.lookAt(nextX, y + satelliteOffset.y, nextZ);
-
-    // Debug: current satellite offset
-    if (orbitControls && orbitControls.enabled && currentOrbitAngle % (Math.PI / 2) < 0.0001) {
-        console.log('🛰️ Satellite offset:', satelliteOffset.x.toFixed(2), satelliteOffset.y.toFixed(2), satelliteOffset.z.toFixed(2));
+    // Primary satellite
+    const x1 = ORBIT_RADIUS * Math.cos(currentOrbitAngle1);
+    const z1 = ORBIT_RADIUS * Math.sin(currentOrbitAngle1);
+    const y1 = ORBIT_RADIUS * 0.15 * Math.sin(currentOrbitAngle1 * 0.8);
+    const pos1 = new THREE.Vector3(x1, y1, z1).add(satelliteOffset);
+    if (satellitePrimary) {
+        satellitePrimary.position.copy(pos1);
+        const nextAngle1 = (currentOrbitAngle1 + 0.02) % (Math.PI * 2);
+        const nextX1 = ORBIT_RADIUS * Math.cos(nextAngle1) + satelliteOffset.x;
+        const nextZ1 = ORBIT_RADIUS * Math.sin(nextAngle1) + satelliteOffset.z;
+        satellitePrimary.lookAt(nextX1, y1 + satelliteOffset.y, nextZ1);
     }
+
+    // Secondary satellite
+    const x2 = ORBIT_RADIUS_2 * Math.cos(currentOrbitAngle2);
+    const z2 = ORBIT_RADIUS_2 * Math.sin(currentOrbitAngle2);
+    const y2 = ORBIT_RADIUS_2 * 0.18 * Math.sin(currentOrbitAngle2 * 1.1);
+    const pos2 = new THREE.Vector3(x2, y2, z2);
+    if (satelliteSecondary) {
+        satelliteSecondary.position.copy(pos2);
+        const nextAngle2 = (currentOrbitAngle2 + 0.02) % (Math.PI * 2);
+        const nextX2 = ORBIT_RADIUS_2 * Math.cos(nextAngle2);
+        const nextZ2 = ORBIT_RADIUS_2 * Math.sin(nextAngle2);
+        satelliteSecondary.lookAt(nextX2, y2, nextZ2);
+    }
+
+    // Intentionally no satellite-satellite collision reaction, they pass through each other
 }
 
-// ==================== ECLIPSE DETECTION ====================
+
+// ==================== SOLAR BURST / ECLIPSE DETECTION ====================
+const SOLAR_BURST_MIN_DELAY = 15000; // ms
+const SOLAR_BURST_MAX_DELAY = 30000; // ms
+const SOLAR_BURST_DURATION = 2200; // ms
+const SOLAR_BURST_DAMAGE = 12; // battery percent immediate hit
+const SOLAR_BURST_ALIGNMENT_THRESHOLD = 0.70; // range of alignment dot-product for satellite to be hit
+
+let solarBurstActive = false;
+let solarBurstStartTime = 0;
+let nextSolarBurstTime = Date.now() + (SOLAR_BURST_MIN_DELAY + Math.random() * (SOLAR_BURST_MAX_DELAY - SOLAR_BURST_MIN_DELAY));
+
+function scheduleNextSolarBurst() {
+    nextSolarBurstTime = Date.now() + SOLAR_BURST_MIN_DELAY + Math.random() * (SOLAR_BURST_MAX_DELAY - SOLAR_BURST_MIN_DELAY);
+    solarBurstActive = false;
+    solarBurstStartTime = 0;
+}
+
+export function resetSolarBurst() {
+    solarBurstActive = false;
+    solarBurstStartTime = 0;
+    scheduleNextSolarBurst();
+    console.log('🌩️ Solar burst sequence reset');
+}
+
+function updateSolarBurst(satPos, sunDirection) {
+    const now = Date.now();
+    let justTriggered = false;
+
+    if (solarBurstActive) {
+        if (now - solarBurstStartTime >= SOLAR_BURST_DURATION) {
+            scheduleNextSolarBurst();
+        }
+    } else if (now >= nextSolarBurstTime && satPos && sunDirection) {
+        // Check if satellite is roughly in direction of the sun (vulnerable)
+        const satDir = satPos.clone().normalize();
+        const alignment = satDir.dot(sunDirection);
+        if (alignment >= SOLAR_BURST_ALIGNMENT_THRESHOLD) {
+            solarBurstActive = true;
+            solarBurstStartTime = now;
+            justTriggered = true;
+        } else {
+            // if not aligned, wait a short time to recheck
+            nextSolarBurstTime = now + 3000;
+        }
+    }
+
+    const timeRemaining = solarBurstActive ? Math.max(0, SOLAR_BURST_DURATION - (now - solarBurstStartTime)) : 0;
+    const nextIn = solarBurstActive ? 0 : Math.max(0, nextSolarBurstTime - now);
+
+    return {
+        active: solarBurstActive,
+        justTriggered,
+        timeRemaining,
+        nextIn,
+        damage: justTriggered ? SOLAR_BURST_DAMAGE : 0
+    };
+}
+
 let eclipseLogCounter = 0;
 export function checkEclipse() {
     eclipseLogCounter++;
-    // Simple eclipse logic: if satellite is behind Earth (relative to sun), it's in eclipse
-    // Sun is positioned at (-2, 0.5, 1.5)
     
     // Get satellite position
-    if (!satellite) {
-        console.warn('⚠️ checkEclipse: satellite is NULL!');
-        return { isInSunlight: true, satPos: null };
+    if (!satellitePrimary) {
+        console.warn('⚠️ checkEclipse: satellitePrimary is NULL!');
+        return { litByLight: true, satPos: null };
     }
     
-    const satPos = satellite.position.clone();
+    const satPos = satellitePrimary.position.clone();
 
-    // Sun direction (normalized)
-    const sunDirection = new THREE.Vector3(-2, 0.5, 1.5).normalize();
+    // Use DirectionalLight position to determine if satellite is lit
+    // The light comes FROM the light position
+    const lightDir = sunLight ? sunLight.position.clone().normalize() : new THREE.Vector3(1, 1, 0).normalize();
     
-    // Vector from Earth center to satellite
+    // Vector from Earth center to satellite (normalized)
     const earthToSat = satPos.clone().normalize();
-    
-    // Calculate dot product - if negative, satellite is on shadow side
-    const dotProduct = earthToSat.dot(sunDirection);
 
-    // If dot product is less than -0.3, satellite is likely in eclipse
-    const isInSunlight = dotProduct > -0.3;
+    // Calculate dot product: if positive, satellite faces the light (sunlit)
+    // if negative, satellite faces away from light (in eclipse)
+    const dotProduct = earthToSat.dot(lightDir);
+    
+    // Satellite is lit if facing the light direction
+    const litByLight = dotProduct >= 0;
     
     // Log every 300 calls (~5 seconds at 60fps)
     if (eclipseLogCounter % 300 === 0) {
-        console.log(`🌍 checkEclipse: dot=${dotProduct.toFixed(2)} → ${isInSunlight ? '☀️ SUNLIGHT' : '🌑 ECLIPSE'} | SatPos: (${satPos.x.toFixed(1)}, ${satPos.y.toFixed(1)}, ${satPos.z.toFixed(1)})`);
+        console.log(`🌍 checkEclipse: dot=${dotProduct.toFixed(2)} → ${litByLight ? '☀️ SUNLIT' : '🌘 ECLIPSE'}`);
     }
 
-    return { isInSunlight, satPos };
+    return { litByLight, satPos };
 }
 
 function setupManeuverControls() {
@@ -448,6 +603,19 @@ export function animateScene() {
     if (lightsMesh) lightsMesh.rotation.y += 0.002;
     if (cloudsMesh) cloudsMesh.rotation.y += 0.0023;
 
+    // Sun orbit (faster than satellite)
+    sunAngle = (sunAngle + SUN_SPEED) % (Math.PI * 2);
+    if (sunLight) {
+        const sunX = SUN_ORBIT_RADIUS * Math.cos(sunAngle);
+        const sunZ = SUN_ORBIT_RADIUS * Math.sin(sunAngle);
+        sunLight.position.set(sunX, 0, sunZ);
+        sunLight.target.position.set(0, 0, 0);
+        sunLight.target.updateMatrixWorld();
+    }
+    if (sunMesh) {
+        sunMesh.position.copy(sunLight.position);
+    }
+
     // Rotate Moon
     if (moonGroup) moonGroup.rotation.y += 0.01;
 
@@ -488,7 +656,13 @@ export function getRenderer() {
 }
 
 export function getSatellitePosition() {
-    return satellite ? satellite.position.clone() : null;
+    return satellitePrimary ? satellitePrimary.position.clone() : null;
+}
+
+export function getSatellitePositions() {
+    const pos1 = satellitePrimary ? satellitePrimary.position.clone() : null;
+    const pos2 = satelliteSecondary ? satelliteSecondary.position.clone() : null;
+    return { sat1: pos1, sat2: pos2 };
 }
 
 export function getOrbitAngle() {
@@ -502,3 +676,6 @@ export function getMoonPosition() {
 export function resetSatelliteOffset() {
     satelliteOffset.set(0, 0, 0);
 }
+
+// Export solar burst function for game logic (resetSolarBurst is already exported on declaration)
+export { updateSolarBurst };

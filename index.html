@@ -8,81 +8,62 @@
 </head>
 <body>
     <div class="game-container">
-        <!-- LEFT: 3D Canvas -->
+        <!-- TOP: Glass HUD (PvP Battle Arena Style) -->
+        <div class="hud-container">
+            <div class="hud-panel player1-panel">
+                <div class="sat-name">PLAYER 1</div>
+                <div class="hud-bar">
+                    <div class="battery-bar-hud">
+                        <div id="batteryBarP1" class="bar-fill"></div>
+                    </div>
+                    <span id="batteryPercentP1">100%</span>
+                </div>
+                <div class="stat-section">
+                    <div class="stat-label">HEAT</div>
+                    <div class="heat-bar-hud">
+                        <div id="heatBarP1" class="heat-fill"></div>
+                    </div>
+                </div>
+                <div class="status-text"><span id="statusIndicatorP1">☀️ ACTIVE</span></div>
+            </div>
+
+            <div class="hud-panel center-panel">
+                <div class="survival-time">
+                    <span>⏱️ Survival:</span>
+                    <span id="survivalTime">0s</span>
+                </div>
+                <div class="solar-burst-info">
+                    <span id="solarBurstIndicator">☀️ Solar Flare Ready</span>
+                </div>
+                <div class="system-status">
+                    <span id="faultText">✅ All Systems Nominal</span>
+                </div>
+            </div>
+
+            <div class="hud-panel player2-panel">
+                <div class="sat-name">PLAYER 2</div>
+                <div class="hud-bar">
+                    <div class="battery-bar-hud">
+                        <div id="batteryBarP2" class="bar-fill"></div>
+                    </div>
+                    <span id="batteryPercentP2">100%</span>
+                </div>
+                <div class="stat-section">
+                    <div class="stat-label">HEAT</div>
+                    <div class="heat-bar-hud">
+                        <div id="heatBarP2" class="heat-fill"></div>
+                    </div>
+                </div>
+                <div class="status-text"><span id="statusIndicatorP2">☀️ ACTIVE</span></div>
+            </div>
+        </div>
+
+        <!-- MAIN: 3D Canvas -->
         <div class="canvas-container">
             <canvas id="gameCanvas" tabindex="0"></canvas>
         </div>
 
-        <!-- RIGHT: Control Panel -->
-        <div class="control-panel">
-            <div class="panel-header">
-                <h2>SATELLITE CONTROL</h2>
-            </div>
-
-            <!-- Status Section -->
-            <div class="status-section">
-                <div class="status-item">
-                    <span class="label">Status:</span>
-                    <span id="statusIndicator" class="status-value sunlight">☀️ Sunlight</span>
-                </div>
-                <div class="status-item">
-                    <span class="label">Survival Time:</span>
-                    <span id="survivalTime" class="status-value">0s</span>
-                </div>
-            </div>
-
-            <!-- Battery Section -->
-            <div class="battery-section">
-                <div class="battery-label">
-                    <span>Battery</span>
-                    <span id="batteryPercent">100%</span>
-                </div>
-                <div class="battery-bar-container">
-                    <div class="battery-bar-background">
-                        <div class="battery-threshold"></div>
-                        <div id="batteryBar" class="battery-bar-fill"></div>
-                    </div>
-                </div>
-                <div class="battery-threshold-label">10% Critical</div>
-            </div>
-
-            <!-- Systems Section -->
-            <div class="systems-section">
-                <h3>Systems</h3>
-                <div class="system-toggle">
-                    <button id="commToggle" class="system-button" data-system="comms">
-                        📡 Communications
-                    </button>
-                    <span class="system-power">-1%</span>
-                </div>
-                <div class="system-toggle">
-                    <button id="payloadToggle" class="system-button" data-system="payload">
-                        📦 Payload
-                    </button>
-                    <span class="system-power">-1%</span>
-                </div>
-                <div class="system-toggle">
-                    <button id="cameraToggle" class="system-button" data-system="camera">
-                        📷 Camera
-                    </button>
-                    <span class="system-power">-1%</span>
-                </div>
-            </div>
-
-            <!-- Faults Section -->
-            <div class="faults-section">
-                <h3>System Status</h3>
-                <div id="faultAlert" class="fault-alert hidden">
-                    <div class="fault-message">
-                        <span id="faultText">No faults</span>
-                    </div>
-                    <button id="restartButton" class="restart-button hidden">
-                        🔄 Restart System
-                    </button>
-                </div>
-            </div>
-
-            <!-- Game Over Modal (hidden initially) -->
+        <!-- Game Over Modal (hidden initially) -->
             <div id="gameOverModal" class="modal hidden">
                 <div class="modal-content">
                     <h2>Mission Failed</h2>
@@ -106,7 +87,6 @@
         </div>
     </div>
 
-    <!-- DEBUG PANEL -->
     <!-- DEBUG PANEL -->
     <div id="debugPanel" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-family: monospace; font-size: 11px; z-index: 9999; border: 2px solid #0f0; max-width: 300px; max-height: 300px; overflow-y: auto;">
         <div>🛰️ SATELLITE DEBUG LOG</div>

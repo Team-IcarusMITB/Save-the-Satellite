@@ -48,8 +48,7 @@ export function createSpark(position, color = 0xffdd00, particleCount = 10) {
 function createParticle(position, velocity, color, size = 0.1) {
     const particleGeometry = new THREE.SphereGeometry(size, 4, 4);
     const particleMaterial = new THREE.MeshBasicMaterial({
-        color: color,
-        emissive: color
+        color: color
     });
     const particleMesh = new THREE.Mesh(particleGeometry, particleMaterial);
     particleMesh.position.copy(position);
